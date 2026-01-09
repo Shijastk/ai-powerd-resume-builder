@@ -19,28 +19,7 @@ export const ResumePreview = React.forwardRef<HTMLDivElement, { data: ResumeData
             lineHeight: '1.45'
         }}
     >
-        <header className="mb-6 text-center">
-            <h1 className="text-[28pt] font-bold text-black uppercase mb-1 tracking-normal leading-none">
-                {data.fullName}
-            </h1>
-            <div className="flex flex-wrap justify-center text-[10.5pt] text-black tracking-tight mb-0.5">
-                <span>{data.location}</span>
-                <span className="mx-2">|</span>
-                <span>{data.phone}</span>
-                <span className="mx-2">|</span>
-                <a href={`mailto:${data.email}`} className="text-black no-underline hover:underline">{data.email}</a>
-            </div>
-            <div className="flex flex-wrap justify-center gap-x-3 text-[10.5pt] text-black">
-                {(data.links || []).map((link, idx) => (
-                    <React.Fragment key={link.id}>
-                        <a href={link.url?.startsWith('http') ? link.url : `https://${link.url}`} target="_blank" rel="noopener noreferrer" className="text-black no-underline hover:underline italic">
-                            {link.url?.replace(/^https?:\/\//, '')}
-                        </a>
-                        {idx < (data.links || []).length - 1 && <span className="text-black px-1">|</span>}
-                    </React.Fragment>
-                ))}
-            </div>
-        </header>
+        
 
         <div className="space-y-4 flex-1">
             {data.sections.map((section) => {
@@ -49,7 +28,63 @@ export const ResumePreview = React.forwardRef<HTMLDivElement, { data: ResumeData
                 switch (section.id) {
                     case 'summary':
                         return data.summary ? (
-                            <ResumeSection key={section.id} title={section.title}>
+                            <ResumeSection key={section.id} title={section.title}  
+                                <header
+      className="mb-6"
+      style={{
+        textAlign: 'center',
+        wordSpacing: 'normal',
+        letterSpacing: 'normal',
+      }}
+    >
+      <h1 className="text-[28pt] font-bold uppercase mb-1 leading-none">
+        {data.fullName}
+      </h1>
+
+      <div className="text-[10.5pt] mb-1">
+        <span>{data.location}</span>
+        <span className="mx-2">|</span>
+        <span>{data.phone}</span>
+        <span className="mx-2">|</span>
+        <a
+          href={`mailto:${data.email}`}
+          style={{ wordSpacing: 'normal' }}
+          className="text-black no-underline hover:underline"
+        >
+          {data.email}
+        </a>
+      </div>
+
+      <div
+        className="text-[10.5pt]"
+        style={{ wordSpacing: 'normal', letterSpacing: 'normal' }}
+      >
+        {(data.links || []).map((link, idx) => (
+          <React.Fragment key={link.id}>
+            <a
+              href={
+                link.url?.startsWith('http')
+                  ? link.url
+                  : `https://${link.url}`
+              }
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                wordSpacing: 'normal',
+                letterSpacing: 'normal',
+                textAlign: 'left',
+              }}
+              className="text-black no-underline hover:underline italic"
+            >
+              {link.url?.replace(/^https?:\/\//, '')}
+            </a>
+            {idx < data.links.length - 1 && (
+              <span className="mx-2">|</span>
+            )}
+          </React.Fragment>
+        ))}
+      </div>
+    </header>
                                 <p className="text-[11pt] leading-snug text-black text-justify">
                                     {data.summary}
                                 </p>
