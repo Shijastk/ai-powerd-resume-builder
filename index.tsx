@@ -1,7 +1,7 @@
 import React from 'react';
 import './src/index.css';
 import { createRoot } from 'react-dom/client';
-import { ResumeBuilder } from './src/pages/ResumeBuilder.tsx';
+import App from './src/App.tsx';
 
 const root = createRoot(document.getElementById('root')!);
-root.render(<ResumeBuilder />);
+root.render(<App />);
