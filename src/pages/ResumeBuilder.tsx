@@ -96,7 +96,7 @@ export const ResumeBuilder = () => {
         setLoading(true);
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            const prompt = `Tailor this resume for JD: "${jobDescription}". Data: ${JSON.stringify(data)}. Add 3-4 NEW professional projects matching JD skills. Return valid JSON matching schema.`;
+            const prompt = `Tailor this resume for JD: "${jobDescription}". Data: ${JSON.stringify(data)}. Update the descriptions of the EXISTING projects and experiences to align with the JD. DO NOT create new projects. Enhance the highlights of the user's actual projects. Return valid JSON matching schema.`;
 
             const response = await ai.models.generateContent({
                 model: 'gemini-3-flash-preview',
@@ -311,7 +311,7 @@ export const ResumeBuilder = () => {
                             />
                             <div className="flex gap-4">
                                 <button onClick={handleOptimizeATS} disabled={loading} className="flex-1 py-4 bg-white text-blue-700 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-blue-50 transition-all shadow-xl disabled:opacity-50">
-                                    {loading ? "Engineering..." : "Auto-Tailor Content"}
+                                    {loading ? "Engineering..." : "create"}
                                 </button>
                                 <button onClick={handleGenerateCoverLetter} disabled={loading} className="px-8 py-4 bg-blue-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-blue-400 transition-all shadow-xl disabled:opacity-50">
                                     {loading ? "Writing..." : "Generate Cover Email"}
