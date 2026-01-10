@@ -7,14 +7,17 @@ import {
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import { ResumeData } from '../types/resume';
-import { INITIAL_DATA } from '../data/initialData';
+import { PUBLIC_DATA, PRIVATE_DATA } from '../data/initialData';
 import { InputField } from '../components/ui/InputField';
 import { SectionCard } from '../components/ui/SectionCard';
 import { ResumePreview } from '../components/ResumePreview';
 import { LoadingScreen } from '../components/LoadingScreen';
 
 export const ResumeBuilder = () => {
-    const [data, setData] = useState<ResumeData>(INITIAL_DATA);
+    const [data, setData] = useState<ResumeData>(() => {
+        const isAdmin = localStorage.getItem('is_admin') === 'true';
+        return isAdmin ? PRIVATE_DATA : PUBLIC_DATA;
+    });
     const [loading, setLoading] = useState(false);
     const [initialLoading, setInitialLoading] = useState(true);
     const [jobDescription, setJobDescription] = useState("");
@@ -22,6 +25,7 @@ export const ResumeBuilder = () => {
     const [coverLetter, setCoverLetter] = useState("");
     const [copied, setCopied] = useState(false);
     const [scale, setScale] = useState(1);
+    const [showLoginModal, setShowLoginModal] = useState(false);
     const resumeRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -44,6 +48,28 @@ export const ResumeBuilder = () => {
     }, [activeTab]);
 
     if (initialLoading) return <LoadingScreen />;
+
+    const handleLogin = (e: React.FormEvent) => {
+        e.preventDefault();
+        const form = e.target as HTMLFormElement;
+        const u = (form.elements.namedItem('username') as HTMLInputElement).value;
+        const p = (form.elements.namedItem('password') as HTMLInputElement).value;
+
+        if (u === 'shijas' && p === 'admin123') {
+            localStorage.setItem('is_admin', 'true');
+            setData(PRIVATE_DATA);
+            setShowLoginModal(false);
+            window.location.reload(); // Reload to refresh everything cleanly
+        } else {
+            alert('Invalid credentials');
+        }
+    };
+
+    const handleLogout = () => {
+        localStorage.removeItem('is_admin');
+        setData(PUBLIC_DATA);
+        window.location.reload();
+    };
 
     const handleManualKeySelection = async () => {
         // @ts-ignore
@@ -150,7 +176,7 @@ export const ResumeBuilder = () => {
 
                 // Content settings matching doc.html config
                 const pageHeight = 297;
-                const marginTop = 15;
+                const marginTop = 10;
                 const marginBottom = 15;
                 const contentHeight = pageHeight - marginTop - marginBottom;
 
@@ -234,13 +260,19 @@ export const ResumeBuilder = () => {
     return (
         <div className="min-h-screen bg-slate-50 font-sans pb-20 overflow-x-hidden">
             <nav className="fixed w-full top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200 px-8 py-4 flex flex-col md:flex-row justify-between items-center gap-4 shadow-sm">
-                <div className="flex items-center gap-3">
-                    <div className="bg-slate-900 p-2 rounded-xl text-white shadow-xl rotate-3">
+                <div
+                    className="flex items-center gap-3 cursor-pointer select-none"
+                    onDoubleClick={() => setShowLoginModal(true)}
+                    title="Double click for admin login"
+                >
+                    <div className={`bg-slate-900 p-2 rounded-xl text-white shadow-xl rotate-3 transition-colors ${localStorage.getItem('is_admin') ? 'bg-indigo-600' : ''}`}>
                         <Zap size={20} className="text-yellow-400" />
                     </div>
                     <div>
                         <h1 className="text-sm font-black tracking-widest uppercase">LaTeX Architect <span className="text-blue-600">AI</span></h1>
-                        <p className="text-[9px] font-bold text-slate-400 uppercase">Professional ATS Engine</p>
+                        <p className="text-[9px] font-bold text-slate-400 uppercase">
+                            {localStorage.getItem('is_admin') === 'true' ? 'Premium Unlocked' : 'Professional ATS Engine'}
+                        </p>
                     </div>
                 </div>
 
@@ -496,6 +528,49 @@ export const ResumeBuilder = () => {
                     </div>
                 )}
             </main>
+
+            {showLoginModal && (
+                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+                    <div className="bg-white p-8 rounded-[2rem] shadow-2xl w-full max-w-sm border border-slate-100 animate-in fade-in zoom-in duration-200">
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-lg font-black uppercase text-slate-800 tracking-wider">Admin Access</h3>
+                            <button onClick={() => setShowLoginModal(false)} className="p-2 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors">
+                                <X size={16} className="text-slate-500" />
+                            </button>
+                        </div>
+                        {localStorage.getItem('is_admin') === 'true' ? (
+                            <div className="text-center space-y-6">
+                                <div className="p-4 bg-green-50 text-green-700 rounded-2xl font-bold flex items-center justify-center gap-2">
+                                    <Check size={20} /> Signed In as Admin
+                                </div>
+                                <button onClick={handleLogout} className="w-full py-3 bg-red-500 text-white font-bold rounded-xl hover:bg-red-600 transition-colors uppercase tracking-widest text-xs">
+                                    Sign Out
+                                </button>
+                            </div>
+                        ) : (
+                            <form onSubmit={handleLogin} className="space-y-4">
+                                <div>
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Username</label>
+                                    <div className="bg-slate-50 border border-slate-200 rounded-xl flex items-center px-3">
+                                        <User size={16} className="text-slate-300" />
+                                        <input name="username" className="w-full p-3 bg-transparent outline-none text-sm font-medium" placeholder="Enter username..." autoFocus />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-1">Password</label>
+                                    <div className="bg-slate-50 border border-slate-200 rounded-xl flex items-center px-3">
+                                        <Key size={16} className="text-slate-300" />
+                                        <input name="password" type="password" className="w-full p-3 bg-transparent outline-none text-sm font-medium" placeholder="••••••••" />
+                                    </div>
+                                </div>
+                                <button type="submit" className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 transition-colors uppercase tracking-widest text-xs shadow-lg shadow-blue-500/30">
+                                    Unlock Profile
+                                </button>
+                            </form>
+                        )}
+                    </div>
+                </div>
+            )}
 
             <style>{`.break-inside-avoid { page-break-inside: avoid; break-inside: avoid; }`}</style>
         </div>

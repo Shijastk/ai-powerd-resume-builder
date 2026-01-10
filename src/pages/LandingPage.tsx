@@ -22,15 +22,21 @@ export const LandingPage = () => {
                 </div>
                 <div className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-600">
                     <a href="#features" className="hover:text-slate-900 transition-colors">Features</a>
-                    <a href="#how-it-works" className="hover:text-slate-900 transition-colors">How it Works</a>
-                    <a href="#testimonials" className="hover:text-slate-900 transition-colors">Reviews</a>
                 </div>
-                <button
-                    onClick={() => navigate('/builder')}
-                    className="bg-slate-900 text-white px-5 py-2 rounded-full text-sm font-bold hover:bg-slate-800 transition-all hover:scale-105 active:scale-95 shadow-lg shadow-slate-900/20"
-                >
-                    Launch App
-                </button>
+                <div className="flex items-center gap-4">
+                    <button
+                        onClick={() => navigate('/login')}
+                        className="text-sm font-bold text-slate-500 hover:text-slate-900 transition-colors"
+                    >
+                        Admin Login
+                    </button>
+                    <button
+                        onClick={() => navigate('/builder')}
+                        className="bg-slate-900 text-white px-5 py-2 rounded-full text-sm font-bold hover:bg-slate-800 transition-all hover:scale-105 active:scale-95 shadow-lg shadow-slate-900/20"
+                    >
+                        Launch App
+                    </button>
+                </div>
             </nav>
 
             {/* Hero Section */}
