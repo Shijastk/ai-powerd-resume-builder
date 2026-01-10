@@ -11,16 +11,23 @@ import { INITIAL_DATA } from '../data/initialData';
 import { InputField } from '../components/ui/InputField';
 import { SectionCard } from '../components/ui/SectionCard';
 import { ResumePreview } from '../components/ResumePreview';
+import { LoadingScreen } from '../components/LoadingScreen';
 
 export const ResumeBuilder = () => {
     const [data, setData] = useState<ResumeData>(INITIAL_DATA);
     const [loading, setLoading] = useState(false);
+    const [initialLoading, setInitialLoading] = useState(true);
     const [jobDescription, setJobDescription] = useState("");
     const [activeTab, setActiveTab] = useState<'editor' | 'preview' | 'cover'>('editor');
     const [coverLetter, setCoverLetter] = useState("");
     const [copied, setCopied] = useState(false);
     const [scale, setScale] = useState(1);
     const resumeRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const timer = setTimeout(() => setInitialLoading(false), 2000);
+        return () => clearTimeout(timer);
+    }, []);
 
     useEffect(() => {
         const handleResize = () => {
@@ -35,6 +42,8 @@ export const ResumeBuilder = () => {
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
     }, [activeTab]);
+
+    if (initialLoading) return <LoadingScreen />;
 
     const handleManualKeySelection = async () => {
         // @ts-ignore
