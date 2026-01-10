@@ -3,7 +3,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 import {
     Sparkles, User, Briefcase, Download, Mail, Trash2,
     PenTool, MessageSquare, Layers, Zap, Code,
-    X, Check, Eye, Link as LinkIcon, Key, GraduationCap, ChevronUp, ChevronDown, EyeOff
+    X, Check, Eye, Link as LinkIcon, Key, GraduationCap, ChevronUp, ChevronDown, EyeOff, Send
 } from 'lucide-react';
 import jsPDF from 'jspdf';
 import { ResumeData } from '../types/resume';
@@ -112,10 +112,11 @@ export const ResumeBuilder = () => {
         setLoading(true);
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            const prompt = `Candidate: ${data.fullName}. JD: ${jobDescription}. Write a plain-text cover email draft. No markdown stars.`;
+            const contactInfo = `Email: ${data.email}, Phone: ${data.phone}, Links: ${data.links?.map(l => l.url).join(', ')}`;
+            const prompt = `Candidate: ${data.fullName}. Contact Info: ${contactInfo}. JD: ${jobDescription}. Write a professional cover email draft. Use bolding (markdown **) for key skills and achievements. INTEGRATE the candidate's phone number and links naturally into the signature or header. DO NOT use placeholders like "[Phone]" or "[Link]" - use the actual data provided.`;
             const response = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: prompt });
             if (response.text) {
-                setCoverLetter(response.text.replace(/\*/g, ''));
+                setCoverLetter(response.text);
             }
             setActiveTab('cover');
         } catch (e: any) {
@@ -177,20 +178,48 @@ export const ResumeBuilder = () => {
                 });
             };
 
+            // Temporarily hide visual page breaks for PDF generation
+            const breaks = el.querySelectorAll('.page-break-line');
+            breaks.forEach(b => (b as HTMLElement).style.display = 'none');
+
             await doc.html(el, {
                 callback: (pdf) => {
                     addLinksToPdf(pdf);
                     pdf.save(`${data.fullName.replace(/\s+/g, '_')}_Resume.pdf`);
+                    breaks.forEach(b => (b as HTMLElement).style.display = 'flex');
                     setLoading(false);
                 },
                 x: 0, y: 0, width: 210, windowWidth: 794,
-                autoPaging: 'text', margin: [15, 0, 15, 0],
-                html2canvas: { scale: 0.264583, useCORS: true, backgroundColor: '#ffffff' }
+                autoPaging: 'text', margin: [10, 0, 15, 0],
+                html2canvas: { useCORS: true, backgroundColor: '#ffffff' }
             });
         } catch (e) {
             console.error("PDF failed:", e);
+            const breaks = el?.querySelectorAll('.page-break-line');
+            if (breaks) breaks.forEach(b => (b as HTMLElement).style.display = 'flex');
             setLoading(false);
         }
+    };
+
+    const handleCopyDraft = async () => {
+        const plainText = coverLetter.replace(/[*]+/g, '');
+        try {
+            const html = coverLetter
+                .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
+                .replace(/\n/g, '<br>');
+
+            // @ts-ignore
+            const data = [new ClipboardItem({
+                "text/html": new Blob([html], { type: "text/html" }),
+                "text/plain": new Blob([plainText], { type: "text/plain" })
+            })];
+            await navigator.clipboard.write(data);
+        } catch (e) {
+            console.error("Clipboard rich copy failed, falling back", e);
+            await navigator.clipboard.writeText(plainText);
+        }
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
     };
 
     return (
@@ -434,10 +463,25 @@ export const ResumeBuilder = () => {
                         <div className="bg-white border border-slate-200 rounded-[2.5rem] shadow-xl overflow-hidden">
                             <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                                 <div className="flex items-center gap-3"><Mail size={20} className="text-blue-600" /><h2 className="text-xs font-black uppercase tracking-widest text-slate-800">Cover Email Draft</h2></div>
-                                {coverLetter && <button onClick={() => { navigator.clipboard.writeText(coverLetter); setCopied(true); setTimeout(() => setCopied(false), 2000); }} className={`px-5 py-2 text-xs font-bold rounded-xl transition-all ${copied ? 'bg-green-600' : 'bg-slate-900'} text-white flex items-center gap-2`}>{copied ? <Check size={14} /> : 'Copy Draft'}</button>}
+                                {coverLetter && (
+                                    <div className="flex items-center gap-3">
+                                        <button onClick={() => {
+                                            const subject = `Application for Role - ${data.fullName}`;
+                                            const body = coverLetter.replace(/[*]+/g, ''); // Strip all markdown stars for plain text
+                                            window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
+                                        }} className="px-5 py-2 text-xs font-bold rounded-xl bg-blue-600 text-white flex items-center gap-2 hover:bg-blue-700 transition-all shadow-lg">
+                                            <Send size={14} /> Open Email
+                                        </button>
+                                        <button onClick={handleCopyDraft} className={`px-5 py-2 text-xs font-bold rounded-xl transition-all ${copied ? 'bg-green-600' : 'bg-slate-900'} text-white flex items-center gap-2`}>{copied ? <Check size={14} /> : 'Copy Rich Text'}</button>
+                                    </div>
+                                )}
                             </div>
                             <div className="p-10">
-                                {!coverLetter ? <div className="text-center py-20 opacity-30 text-xs font-bold uppercase">Provide Job Description in Editor to Generate</div> : <div className="bg-slate-50 p-8 rounded-2xl border border-slate-100 font-serif text-[11pt] leading-relaxed whitespace-pre-wrap">{coverLetter}</div>}
+                                {!coverLetter ? <div className="text-center py-20 opacity-30 text-xs font-bold uppercase">Provide Job Description in Editor to Generate</div> : (
+                                    <div className="bg-slate-50 p-8 rounded-2xl border border-slate-100 font-serif text-[11pt] leading-relaxed whitespace-pre-wrap">
+                                        {coverLetter.split('**').map((part, i) => i % 2 === 1 ? <strong key={i}>{part}</strong> : part)}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
