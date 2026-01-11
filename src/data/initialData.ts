@@ -8,7 +8,7 @@ export const PRIVATE_DATA: ResumeData = {
 
     links: [
         { id: '1', url: 'https://www.linkedin.com/in/shijas-tk', label: 'LinkedIn' },
-        { id: '2', url: 'https://github.com/Shijastk', label: 'GitHub' },
+        { id: '2', url: 'https://www.github.com/Shijastk', label: 'GitHub' },
         { id: '3', url: 'https://shijasresume2025.vercel.app/', label: 'Portfolio' }
     ],
 

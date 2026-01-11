@@ -2,6 +2,20 @@ import React from 'react';
 import { ResumeData } from '../types/resume';
 import { ResumeSection } from './ResumeSection';
 
+const normalizeUrl = (url: string) => {
+    if (!url) return '';
+
+    // already has protocol
+    if (/^https?:\/\//i.test(url)) return url;
+
+    // starts with www
+    if (/^www\./i.test(url)) return `https://${url}`;
+
+    // plain domain → add https://www.
+    return `https://www.${url}`;
+};
+
+
 export const ResumePreview = React.forwardRef<HTMLDivElement, { data: ResumeData }>(({ data }, ref) => (
     <div
         ref={ref}
@@ -16,7 +30,10 @@ export const ResumePreview = React.forwardRef<HTMLDivElement, { data: ResumeData
             fontFamily: "'Times New Roman', Times, serif",
             display: 'flex',
             flexDirection: 'column',
-            lineHeight: '1.45'
+            lineHeight: '1.45',
+            textAlign: 'left',
+            wordSpacing: 'normal',
+            letterSpacing: 'normal'
         }}
     >
 
@@ -56,9 +73,7 @@ export const ResumePreview = React.forwardRef<HTMLDivElement, { data: ResumeData
                     <React.Fragment key={link.id}>
                         <a
                             href={
-                                link.url?.startsWith('http')
-                                    ? link.url
-                                    : `https://${link.url}`
+                                normalizeUrl(link.url)
                             }
                             target="_blank"
                             rel="noopener noreferrer"
@@ -87,7 +102,7 @@ export const ResumePreview = React.forwardRef<HTMLDivElement, { data: ResumeData
                     case 'summary':
                         return data.summary ? (
                             <ResumeSection key={section.id} title={section.title}>
-                                <p className="text-[11pt] leading-snug text-black text-justify">
+                                <p className="text-[11pt] leading-snug text-black">
                                     {data.summary}
                                 </p>
                             </ResumeSection>
@@ -109,7 +124,7 @@ export const ResumePreview = React.forwardRef<HTMLDivElement, { data: ResumeData
                                         </div>
                                         <ul className="mt-1.5 space-y-1 list-disc pl-5 text-[11pt]">
                                             {(exp.highlights || []).filter(h => h.trim()).map((h, j) => (
-                                                <li key={j} className="text-black leading-snug text-justify">{h}</li>
+                                                <li key={j} className="text-black leading-snug">{h}</li>
                                             ))}
                                         </ul>
                                     </div>
@@ -138,10 +153,16 @@ export const ResumePreview = React.forwardRef<HTMLDivElement, { data: ResumeData
                                     <div key={proj.id} className="mb-6 last:mb-0 break-inside-avoid">
                                         <div className="flex justify-between items-baseline gap-4 mb-1">
                                             <span className="font-bold text-[11pt] text-black uppercase">{proj.title}</span>
-                                            <span className="text-[10pt] italic shrink-0">
+                                            <span className="text-[10pt] italic shrink-0 text-right" style={{ wordSpacing: 'normal', letterSpacing: 'normal', textAlign: 'right' }}>
                                                 {proj.liveLink ? (
-                                                    <a href={proj.liveLink.startsWith('http') ? proj.liveLink : `https://${proj.liveLink}`} target="_blank" rel="noopener noreferrer" className="text-black no-underline hover:underline">
-                                                        {proj.liveLink.replace(/^https?:\/\//, '')}
+                                                    <a
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        className="text-black hover:underline whitespace-nowrap mt-[-5px]"
+                                                        style={{ wordSpacing: 'normal', letterSpacing: 'normal', display: 'inline-block', }}
+                                                        href={normalizeUrl(proj.liveLink)}
+                                                    >
+                                                        {proj.liveLink}
                                                     </a>
                                                 ) : proj.subtitle}
                                             </span>
@@ -149,7 +170,7 @@ export const ResumePreview = React.forwardRef<HTMLDivElement, { data: ResumeData
                                         {proj.techStack && <div className="text-[10pt] italic mb-1.5">({proj.techStack})</div>}
                                         <ul className="mt-1.5 space-y-1 list-disc pl-5 text-[11pt]">
                                             {(proj.highlights || []).filter(h_1 => h_1.trim()).map((h_2, j_1) => (
-                                                <li key={j_1} className="text-black leading-snug text-justify">{h_2}</li>
+                                                <li key={j_1} className="text-black leading-snug">{h_2}</li>
                                             ))}
                                         </ul>
                                     </div>
@@ -171,7 +192,7 @@ export const ResumePreview = React.forwardRef<HTMLDivElement, { data: ResumeData
                                         </div>
                                         <ul className="mt-1.5 space-y-1 list-disc pl-5 text-[11pt]">
                                             {(free.highlights || []).filter(h => h.trim()).map((h, j) => (
-                                                <li key={j} className="text-black leading-snug text-justify">{h}</li>
+                                                <li key={j} className="text-black leading-snug">{h}</li>
                                             ))}
                                         </ul>
                                     </div>

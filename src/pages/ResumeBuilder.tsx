@@ -172,13 +172,17 @@ export const ResumeBuilder = () => {
             const addLinksToPdf = (pdf: jsPDF) => {
                 const links = el.querySelectorAll('a');
                 const containerRect = el.getBoundingClientRect();
-                const scale = 0.264583; // px to mm conversion (approx 96 DPI)
 
-                // Content settings matching doc.html config
-                const pageHeight = 297;
+                // PDF Page dimensions
+                const pdfPageWidth = 210; // A4 width in mm
+                const pdfPageHeight = 297; // A4 height in mm
                 const marginTop = 10;
                 const marginBottom = 15;
-                const contentHeight = pageHeight - marginTop - marginBottom;
+                const contentHeight = pdfPageHeight - marginTop - marginBottom;
+
+                // Calculate scale factor: PDF Width (mm) / DOM Width (px)
+                // This creates a standard conversion ratio regardless of screen zoom/transform
+                const scaleFactor = pdfPageWidth / containerRect.width;
 
                 links.forEach((link) => {
                     const rect = link.getBoundingClientRect();
@@ -189,24 +193,21 @@ export const ResumeBuilder = () => {
                     const relTop = rect.top - containerRect.top;
                     const relLeft = rect.left - containerRect.left;
 
-                    // Convert to mm
-                    // x position: starts at left margin (0) in doc.html setup below, plus relative left
-                    const x = relLeft * scale;
+                    // Convert to mm using the proportional scale factor
+                    const x = relLeft * scaleFactor;
 
-                    // y position: relative top * scale
-                    const yTotal = relTop * scale;
+                    // y position relative to the document top
+                    const yTotal = relTop * scaleFactor;
 
-                    // Determine page number (1-based)
-                    // This creates a rough estimate. For complex layouts with 'avoid-break', exact sync is hard,
-                    // but for header links (most common), they are safely on Page 1.
-                    let page = 1 + Math.floor(yTotal / contentHeight);
+                    // Calculate page and position
+                    // Add very slight buffer (0.5) to page calc to handle edge cases
+                    let page = 1 + Math.floor((yTotal - 0.5) / contentHeight);
 
-                    // Calculate y position on that specific page
-                    // We must add marginTop because doc.html starts rendering content at y=marginTop
+                    // Calculate y position on the specific page
                     const yOnPage = (yTotal % contentHeight) + marginTop;
 
-                    const w = rect.width * scale;
-                    const h = rect.height * scale;
+                    const w = rect.width * scaleFactor;
+                    const h = rect.height * scaleFactor;
 
                     pdf.setPage(page);
                     pdf.link(x, yOnPage, w, h, { url });
