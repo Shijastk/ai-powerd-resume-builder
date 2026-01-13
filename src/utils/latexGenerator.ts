@@ -10,12 +10,19 @@ const escape = (str: string | undefined) => {
         .replace(/"/g, "''");
 };
 
+const getLinkDisplay = (url: string, label?: string) => {
+    if (label) return escape(label);
+    if (url.includes('linkedin.com')) return 'LinkedIn';
+    if (url.includes('github.com')) return 'GitHub';
+    return 'Live Link';
+};
+
 export const generateLatex = (data: ResumeData): string => {
     const header = `
 \\documentclass[a4paper,11pt]{article}
 \\usepackage[left=20mm, right=20mm, top=20mm, bottom=20mm]{geometry}
 \\usepackage{enumitem}
-\\usepackage{hyperref}
+\\usepackage[colorlinks=true, urlcolor=blue, linkcolor=blue]{hyperref}
 \\usepackage{titlesec}
 \\usepackage{xcolor}
 
@@ -35,7 +42,7 @@ export const generateLatex = (data: ResumeData): string => {
     {\\huge\\bfseries ${escape(data.fullName).toUpperCase()}} \\\\[4pt]
     ${escape(data.location)} | ${escape(data.phone)} | \\href{mailto:${data.email}}{${escape(data.email)}}
     ${data.links && data.links.length > 0 ? '\\\\' : ''}
-    ${data.links?.map(l => `\\href{${l.url}}{${escape(l.url.replace(/^https?:\/\//, ''))}}`).join(' | ')}
+    ${data.links?.map(l => `\\href{${l.url}}{${getLinkDisplay(l.url, l.label)}}`).join(' | ')}
 \\end{center}
 
 \\vspace{10pt}
@@ -94,7 +101,7 @@ ${escape(data.summary)}
 \\section*{${section.title.toUpperCase()}}
 `;
                     data.projects.forEach(proj => {
-                        const linkPart = proj.liveLink ? `\\href{${proj.liveLink}}{${escape(proj.liveLink.replace(/^https?:\/\//, ''))}}` : escape(proj.subtitle);
+                        const linkPart = proj.liveLink ? `\\href{${proj.liveLink}}{${getLinkDisplay(proj.liveLink, proj.liveLinkLabel)}}` : escape(proj.subtitle);
                         content += `
 \\noindent \\textbf{${escape(proj.title)}} \\hfill \\textit{${linkPart}} \\\\
 \\textit{${escape(proj.techStack ? `(${proj.techStack})` : '')}}

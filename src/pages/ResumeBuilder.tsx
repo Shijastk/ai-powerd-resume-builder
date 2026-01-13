@@ -348,7 +348,8 @@ export const ResumeBuilder = () => {
                                 </div>
                                 {(data.links || []).map(link => (
                                     <div key={link.id} className="flex gap-2 mb-2 items-center">
-                                        <div className="flex-1 bg-white border border-slate-200 rounded-xl flex items-center px-3"><LinkIcon size={14} className="text-slate-300 mr-2" /><input className="w-full text-xs py-2 bg-transparent outline-none" value={link.url} placeholder="linkedin.com/in/user" onChange={e => updateItem('links', link.id, { url: e.target.value })} /></div>
+                                        <div className="flex-[2] bg-white border border-slate-200 rounded-xl flex items-center px-3"><LinkIcon size={14} className="text-slate-300 mr-2" /><input className="w-full text-xs py-2 bg-transparent outline-none" value={link.url} placeholder="https://..." onChange={e => updateItem('links', link.id, { url: e.target.value })} /></div>
+                                        <div className="flex-1 bg-white border border-slate-200 rounded-xl flex items-center px-3"><input className="w-full text-xs py-2 bg-transparent outline-none" value={link.label} placeholder="Label (e.g. LinkedIn)" onChange={e => updateItem('links', link.id, { label: e.target.value })} /></div>
                                         <button onClick={() => setData({ ...data, links: data.links.filter(l => l.id !== link.id) })} className="text-rose-400 p-2 hover:bg-rose-50 rounded-lg"><Trash2 size={14} /></button>
                                     </div>
                                 ))}
@@ -435,9 +436,10 @@ export const ResumeBuilder = () => {
                                                     <div key={proj.id} className="p-6 bg-slate-50 border border-slate-100 rounded-3xl relative space-y-4">
                                                         <button onClick={() => setData({ ...data, projects: data.projects.filter(p => p.id !== proj.id) })} className="absolute top-4 right-4 text-slate-300 hover:text-rose-400"><Trash2 size={16} /></button>
                                                         <InputField label="Project Name" value={proj.title} onChange={(v: string) => updateItem('projects', proj.id, { title: v })} />
-                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                                             <InputField label="Tech" value={proj.techStack} onChange={(v: string) => updateItem('projects', proj.id, { techStack: v })} />
-                                                            <InputField label="Link" value={proj.liveLink} onChange={(v: string) => updateItem('projects', proj.id, { liveLink: v })} />
+                                                            <InputField label="Link URL" value={proj.liveLink} onChange={(v: string) => updateItem('projects', proj.id, { liveLink: v })} />
+                                                            <InputField label="Link Label" value={proj.liveLinkLabel || ''} placeholder="e.g. Live Demo" onChange={(v: string) => updateItem('projects', proj.id, { liveLinkLabel: v })} />
                                                         </div>
                                                         <InputField isTextArea label="Details" value={proj.highlights?.join('\n')} onChange={(v: string) => updateItem('projects', proj.id, { highlights: v.split('\n') })} />
                                                     </div>
@@ -458,6 +460,23 @@ export const ResumeBuilder = () => {
                                                         </div>
                                                         <InputField label="Role" value={free.role} onChange={(v: string) => updateItem('freelance', free.id, { role: v })} />
                                                         <InputField isTextArea label="Details" value={free.highlights?.join('\n')} onChange={(v: string) => updateItem('freelance', free.id, { highlights: v.split('\n') })} />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </SectionCard>
+                                    );
+                                case 'certifications':
+                                    return (
+                                        <SectionCard {...sectionProps} icon={GraduationCap} onAdd={() => addItem('certifications', { name: '', issuer: '', year: '' })}>
+                                            <div className="space-y-4">
+                                                {(data.certifications || []).map((cert) => (
+                                                    <div key={cert.id} className="p-4 bg-slate-50 border border-slate-100 rounded-2xl relative">
+                                                        <button onClick={() => setData({ ...data, certifications: data.certifications.filter(c => c.id !== cert.id) })} className="absolute top-2 right-2 text-slate-300 hover:text-rose-400"><Trash2 size={14} /></button>
+                                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                            <InputField label="Name" value={cert.name} onChange={(v: string) => updateItem('certifications', cert.id, { name: v })} />
+                                                            <InputField label="Issuer" value={cert.issuer} onChange={(v: string) => updateItem('certifications', cert.id, { issuer: v })} />
+                                                            <InputField label="Year" value={cert.year} onChange={(v: string) => updateItem('certifications', cert.id, { year: v })} />
+                                                        </div>
                                                     </div>
                                                 ))}
                                             </div>

@@ -13,7 +13,7 @@ export interface ResumeData {
     summary: string;
     technicalSkills: { category: string; skills: string }[];
     experiences: { id: string; company: string; position: string; location: string; year: string; highlights: string[] }[];
-    projects: { id: string; title: string; subtitle: string; techStack: string; liveLink: string; highlights: string[] }[];
+    projects: { id: string; title: string; subtitle: string; techStack: string; liveLink: string; liveLinkLabel?: string; highlights: string[] }[];
     certifications: { id: string; name: string; issuer: string; year: string }[];
     education: { id: string; school: string; degree: string; major: string; year: string; result: string }[];
     freelance: { id: string; project: string; role: string; duration: string; highlights: string[] }[];

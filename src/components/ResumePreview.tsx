@@ -59,7 +59,7 @@ export const ResumePreview = React.forwardRef<HTMLDivElement, { data: ResumeData
                 <a
                     href={`mailto:${data.email}`}
                     style={{ wordSpacing: 'normal' }}
-                    className="text-black no-underline hover:underline"
+                    className="text-blue-600 no-underline hover:underline"
                 >
                     {data.email}
                 </a>
@@ -82,9 +82,9 @@ export const ResumePreview = React.forwardRef<HTMLDivElement, { data: ResumeData
                                 letterSpacing: 'normal',
                                 textAlign: 'left',
                             }}
-                            className="text-black no-underline hover:underline italic"
+                            className="text-blue-600 no-underline hover:underline italic"
                         >
-                            {link.url?.replace(/^https?:\/\//, '')}
+                            {link.label || link.url?.replace(/^https?:\/\//, '')}
                         </a>
                         {idx < data.links.length - 1 && (
                             <span className="mx-2">|</span>
@@ -158,11 +158,11 @@ export const ResumePreview = React.forwardRef<HTMLDivElement, { data: ResumeData
                                                     <a
                                                         target="_blank"
                                                         rel="noopener noreferrer"
-                                                        className="text-black hover:underline whitespace-nowrap mt-[-5px]"
+                                                        className="text-blue-600 hover:underline whitespace-nowrap mt-[-5px]"
                                                         style={{ wordSpacing: 'normal', letterSpacing: 'normal', display: 'inline-block', }}
                                                         href={normalizeUrl(proj.liveLink)}
                                                     >
-                                                        {proj.liveLink}
+                                                        {proj.liveLinkLabel || normalizeUrl(proj.liveLink).replace(/^https?:\/\//, '')}
                                                     </a>
                                                 ) : proj.subtitle}
                                             </span>
@@ -199,6 +199,26 @@ export const ResumePreview = React.forwardRef<HTMLDivElement, { data: ResumeData
                                 ))}
                             </ResumeSection>
                         ) : null;
+
+                    case 'certifications':
+                        return (data.certifications || []).length > 0 ? (
+                            <ResumeSection key={section.id} title={section.title}>
+                                <div className="space-y-2">
+                                    {data.certifications.map((cert) => (
+                                        <div key={cert.id} className="flex justify-between items-baseline text-[11pt] break-inside-avoid">
+                                            <div className="flex-1">
+                                                <span className="font-bold text-black">{cert.name}</span>
+                                                <span className="mx-1 text-black">-</span>
+                                                <span className="text-black italic">{cert.issuer}</span>
+                                            </div>
+                                            <span className="font-bold text-black shrink-0 ml-4">{cert.year}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            </ResumeSection>
+                        ) : null;
+
+                    case 'freelance':
 
                     case 'education':
                         return (data.education || []).length > 0 ? (

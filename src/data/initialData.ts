@@ -4,7 +4,7 @@ export const PRIVATE_DATA: ResumeData = {
     fullName: "SHIJAS T K",
     email: "shijasmuhammed573@gmail.com",
     phone: "+91 8943435546",
-    location: "India",
+    location: "Kerala",
 
     links: [
         { id: '1', url: 'https://www.linkedin.com/in/shijas-tk', label: 'LinkedIn' },
@@ -24,7 +24,7 @@ export const PRIVATE_DATA: ResumeData = {
 
     experiences: [
         {
-            id: 'e1', company: "Bistux Solutions Pvt Ltd", position: "Frontend Developer", location: "Remote", year: "2024 - 2025",
+            id: 'e1', company: "Bistux Solutions Pvt Ltd", position: "Frontend Developer", location: "Remote", year: "2023 - 2025",
             highlights: [
                 "Developed and maintained scalable React applications using TypeScript and Material UI.",
                 "Worked with Redux Toolkit and REST APIs to manage complex application state.",
@@ -36,7 +36,7 @@ export const PRIVATE_DATA: ResumeData = {
 
     projects: [
         {
-            id: 'p1', title: "AI-Powered Resume & Cover Email Builder", subtitle: "Flagship Project | Smart Resume Automation Platform", techStack: "React, TypeScript, Gemini AI, Tailwind CSS", liveLink: "https://ai-powerd-resume-builder.vercel.app/",
+            id: 'p1', title: "AI-Powered Resume & Cover Email Builder", subtitle: "Flagship Project | Smart Resume Automation Platform", techStack: "React, TypeScript, Gemini AI, Tailwind CSS", liveLink: "https://ai-powerd-resume-builder.vercel.app/", liveLinkLabel: "Live Demo",
             highlights: [
                 "Developed a fully functional AI-powered resume builder allowing users to generate ATS-optimized resumes.",
                 "Full customization of sections, content, and ordering.",
@@ -45,7 +45,7 @@ export const PRIVATE_DATA: ResumeData = {
             ]
         },
         {
-            id: 'p2', title: "SkillSwap", subtitle: "Skill Exchange & Learning Platform", techStack: "MERN Stack, Socket.io", liveLink: "https://skillsync-frontend-theta.vercel.app/",
+            id: 'p2', title: "SkillSwap", subtitle: "Skill Exchange & Learning Platform", techStack: "MERN Stack, Socket.io", liveLink: "https://skillsync-frontend-theta.vercel.app/", liveLinkLabel: "Live Demo",
             highlights: [
                 "Built a peer-to-peer skill exchange platform with real-time chat.",
                 "Implemented skill matching, profile management, and learning requests.",
@@ -53,7 +53,7 @@ export const PRIVATE_DATA: ResumeData = {
             ]
         },
         {
-            id: 'p3', title: "Intensia Arts Fest Management Platform", subtitle: "College-Level Event Management System", techStack: "React, Firebase, Tailwind CSS", liveLink: "https://intensia-arts-fest.vercel.app/",
+            id: 'p3', title: "Intensia Arts Fest Management Platform", subtitle: "College-Level Event Management System", techStack: "React, Firebase, Tailwind CSS", liveLink: "https://intensia-arts-fest.vercel.app/", liveLinkLabel: "Live Demo",
             highlights: [
                 "Developed a complete arts fest management system for event coordination.",
                 "Real-time score entry, result publishing, and team-wise ranking.",
@@ -64,11 +64,11 @@ export const PRIVATE_DATA: ResumeData = {
     ],
 
     certifications: [
-        { id: 'c1', name: "Full-Stack Development (React Focused)", issuer: "AdaCode Solutions", year: "2024" }
+        { id: 'c1', name: "Full-Stack Development (React Focused)", issuer: "AdaCode Solutions", year: "2023" }
     ],
 
     education: [
-        { id: 'ed1', school: "University of Calicut", degree: "Bachelor of Arts", major: "Sociology", year: "2024", result: "First Class" }
+        { id: 'ed1', school: "University of Calicut", degree: "Bachelor of Arts", major: "Sociology", year: "2023", result: "First Class" }
     ],
 
     freelance: [
@@ -97,6 +97,8 @@ export const PRIVATE_DATA: ResumeData = {
         { id: "experiences", title: "Experience", isVisible: true },
         { id: "freelance", title: "Freelance Work", isVisible: true },
         { id: "education", title: "Education", isVisible: true },
+        { id: "certifications", title: "Certifications", isVisible: true },
+        { id: "others", title: "Others", isVisible: true },
     ]
 };
 
@@ -121,5 +123,7 @@ export const PUBLIC_DATA: ResumeData = {
         { id: "experiences", title: "Experience", isVisible: true },
         { id: "freelance", title: "Freelance Work", isVisible: true },
         { id: "education", title: "Education", isVisible: true },
+        { id: "certifications", title: "Certifications", isVisible: true },
+        { id: "others", title: "Others", isVisible: true },
     ]
 };
