@@ -150,19 +150,18 @@ export const ResumePreview = React.forwardRef<HTMLDivElement, { data: ResumeData
                         return (data.projects || []).length > 0 ? (
                             <ResumeSection key={section.id} title={section.title}>
                                 {data.projects.map((proj) => (
-                                    <div key={proj.id} className="mb-6 last:mb-0 break-inside-avoid">
-                                        <div className="flex justify-between items-baseline gap-4 mb-1">
+                                    <div key={proj.id} className="last:mb-0 break-inside-avoid">
+                                        <div className="flex justify-between items-start items-baseline gap-4 mb-1">
                                             <span className="font-bold text-[11pt] text-black uppercase">{proj.title}</span>
                                             <span className="text-[10pt] italic shrink-0 text-right" style={{ wordSpacing: 'normal', letterSpacing: 'normal', textAlign: 'right' }}>
                                                 {proj.liveLink ? (
                                                     <a
                                                         target="_blank"
                                                         rel="noopener noreferrer"
-                                                        className="text-blue-600 hover:underline whitespace-nowrap mt-[-5px]"
-                                                        style={{ wordSpacing: 'normal', letterSpacing: 'normal', display: 'inline-block', }}
-                                                        href={normalizeUrl(proj.liveLink)}
+                                                        className="text-blue-600 hover:underline whitespace-nowrap mt-[-100px !important]"  
+                                                        href={proj.liveLink}
                                                     >
-                                                        {proj.liveLinkLabel || normalizeUrl(proj.liveLink).replace(/^https?:\/\//, '')}
+                                                        {proj.liveLinkLabel}
                                                     </a>
                                                 ) : proj.subtitle}
                                             </span>

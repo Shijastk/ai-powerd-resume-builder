@@ -15,7 +15,7 @@ export const PRIVATE_DATA: ResumeData = {
     summary: "Frontend-focused Full-Stack Developer with 2+ years of hands-on experience building scalable, real-world web applications using React, TypeScript, and modern UI frameworks. Strong experience in AI-powered platforms, resume automation, real-time systems, and event management solutions. Passionate about clean architecture, performance optimization, and user-centric design.",
 
     technicalSkills: [
-        { category: "Languages", skills: "JavaScript (ES6+), TypeScript, HTML5, CSS3, SQL" },
+        { category: "Languages", skills: "JavaScript (ES6+), TypeScript, HTML5, CSS3" },
         { category: "Frontend", skills: "React.js, Vite, Tailwind CSS, Material UI (MUI), Bootstrap" },
         { category: "Backend & APIs", skills: "Node.js, Express.js, REST APIs, Firebase" },
         { category: "State & Tools", skills: "Redux Toolkit, Git, GitLab, JWT, Axios" },
@@ -96,7 +96,7 @@ export const PRIVATE_DATA: ResumeData = {
         { id: "projects", title: "Projects", isVisible: true },
         { id: "experiences", title: "Experience", isVisible: true },
         { id: "freelance", title: "Freelance Work", isVisible: true },
-        { id: "education", title: "Education", isVisible: true },
+        { id: "education", title: "Education", isVisible: true },   
         { id: "certifications", title: "Certifications", isVisible: true },
         { id: "others", title: "Others", isVisible: true },
     ]
