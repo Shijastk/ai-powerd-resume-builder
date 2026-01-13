@@ -32,34 +32,37 @@ export const LoadingScreen = () => {
     }, []);
 
     return (
-        <div className="fixed inset-0 bg-slate-50 flex flex-col items-center justify-center z-[100] font-sans">
-            <div className="bg-white p-12 rounded-[2rem] shadow-2xl flex flex-col items-center gap-8 animate-in fade-in zoom-in duration-500 max-w-sm w-full mx-4 border border-slate-100">
-                <div className="relative">
-                    <div className="absolute inset-0 bg-blue-500 blur-xl opacity-20 rounded-full animate-pulse"></div>
-                    <div className="bg-gradient-to-tr from-slate-900 to-slate-800 p-5 rounded-2xl shadow-xl relative transform transition-transform hover:scale-105 duration-300">
-                        <Sparkles size={40} className="text-yellow-400 animate-pulse" />
-                    </div>
-                    <div className="absolute -bottom-2 -right-2 bg-blue-600 p-1.5 rounded-lg border-4 border-white shadow-lg">
-                        <Loader2 size={16} className="text-white animate-spin" />
-                    </div>
+        <div className="fixed inset-0 bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 flex flex-col items-center justify-center z-[100] font-sans text-white">
+            <div className="flex flex-col items-center gap-8 animate-in fade-in zoom-in duration-700">
+                <div className="relative group">
+                    <div className="absolute inset-0 bg-blue-500 blur-2xl opacity-30 rounded-full group-hover:opacity-50 transition-opacity duration-500 animate-pulse"></div>
+                    <img src="/favicon.svg" alt="LuxeCV Logo" className="w-24 h-24 drop-shadow-2xl relative z-10" />
                 </div>
 
-                <div className="text-center space-y-2 w-full">
-                    <h2 className="text-xl font-black tracking-widest uppercase text-slate-900">LuxeCV AI</h2>
-                    <div className="h-1 w-full bg-slate-100 rounded-full overflow-hidden">
-                        <div
-                            className="h-full bg-blue-600 rounded-full transition-all duration-300 ease-out"
-                            style={{ width: `${Math.min(100, progress)}%` }}
-                        />
+                <div className="text-center space-y-6 max-w-xs w-full">
+                    <h2 className="text-3xl font-black tracking-[0.2em] uppercase drop-shadow-lg">
+                        LuxeCV<span className="text-blue-400">.</span>
+                    </h2>
+
+                    <div className="space-y-3">
+                        <div className="h-1.5 w-full bg-slate-800/50 rounded-full overflow-hidden backdrop-blur-sm border border-white/10">
+                            <div
+                                className="h-full bg-blue-500 rounded-full transition-all duration-300 ease-out shadow-[0_0_15px_rgba(59,130,246,0.5)]"
+                                style={{ width: `${Math.min(100, progress)}%` }}
+                            />
+                        </div>
+                        <p className="text-[10px] font-bold text-blue-200/60 uppercase tracking-widest animate-pulse">
+                            {quotes[quoteIndex]}
+                        </p>
                     </div>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase pt-2 animate-fade-in transition-opacity duration-300 min-h-[15px]">
-                        {quotes[quoteIndex]}
-                    </p>
                 </div>
             </div>
 
-            <div className="absolute bottom-8 text-slate-400 text-[10px] font-medium tracking-wider uppercase opacity-50">
-                Powered by Gemini 1.5 Pro
+            <div className="absolute bottom-10 flex flex-col items-center gap-2 opacity-50">
+                <div className="flex items-center gap-2 text-[10px] font-bold tracking-widest uppercase text-blue-200">
+                    <Sparkles size={12} className="text-blue-400" />
+                    <span>Powered by Gemini 1.5 Pro</span>
+                </div>
             </div>
         </div>
     );

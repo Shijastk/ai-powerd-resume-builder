@@ -264,17 +264,20 @@ export const ResumeBuilder = () => {
         <div className="min-h-screen bg-slate-50 font-sans pb-20 overflow-x-hidden">
             <nav className="fixed w-full top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200 px-8 py-4 flex flex-col md:flex-row justify-between items-center gap-4 shadow-sm">
                 <div
-                    className="flex items-center gap-3 cursor-pointer select-none"
+                    className="flex items-center gap-4 cursor-pointer select-none group"
                     onDoubleClick={() => setShowLoginModal(true)}
                     title="Double click for admin login"
                 >
-                    <div className={`bg-slate-900 p-2 rounded-xl text-white shadow-xl rotate-3 transition-colors ${localStorage.getItem('is_admin') ? 'bg-indigo-600' : ''}`}>
-                        <Zap size={20} className="text-yellow-400" />
+                    <div className="relative">
+                        <div className="absolute inset-0 bg-blue-500 blur-lg opacity-20 rounded-full group-hover:opacity-40 transition-opacity"></div>
+                        <img src="/favicon.svg" alt="Logo" className="w-10 h-10 drop-shadow-lg transform transition-transform group-hover:scale-105 group-hover:rotate-3" />
                     </div>
                     <div>
-                        <h1 className="text-sm font-black tracking-widest uppercase">LaTeX Architect <span className="text-blue-600">AI</span></h1>
-                        <p className="text-[9px] font-bold text-slate-400 uppercase">
-                            {localStorage.getItem('is_admin') === 'true' ? 'Premium Unlocked' : 'Professional ATS Engine'}
+                        <h1 className="text-sm font-black tracking-widest uppercase text-slate-900">LuxeCV <span className="text-blue-600">AI</span></h1>
+                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                            {localStorage.getItem('is_admin') === 'true' ? (
+                                <><span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" /> Premium Unlocked</>
+                            ) : 'Professional ATS Engine'}
                         </p>
                     </div>
                 </div>

@@ -14,10 +14,8 @@ export const LandingPage = () => {
         <div className="min-h-screen bg-slate-50 font-sans selection:bg-blue-100 selection:text-blue-900 overflow-x-hidden">
             {/* Navbar */}
             <nav className="fixed w-full top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-100 h-16 flex items-center justify-between px-6 lg:px-12">
-                <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 bg-gradient-to-tr from-indigo-600 to-blue-500 rounded-lg flex items-center justify-center text-white font-bold text-lg shadow-lg shadow-blue-500/20">
-                        L
-                    </div>
+                <div className="flex items-center gap-3">
+                    <img src="/favicon.svg" alt="LuxeCV Logo" className="w-8 h-8 drop-shadow-md" />
                     <span className="font-extrabold text-lg text-slate-900 tracking-tight">LuxeCV<span className="text-blue-600">.</span></span>
                 </div>
                 <div className="hidden md:flex items-center gap-8 text-sm font-medium text-slate-600">
