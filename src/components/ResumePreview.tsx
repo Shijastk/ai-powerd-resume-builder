@@ -218,7 +218,7 @@ export const ResumePreview = React.forwardRef<HTMLDivElement, { data: ResumeData
                             </ResumeSection>
                         ) : null;
 
-                    case 'freelance':
+
 
                     case 'education':
                         return (data.education || []).length > 0 ? (
