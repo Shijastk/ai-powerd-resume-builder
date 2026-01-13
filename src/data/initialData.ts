@@ -95,7 +95,8 @@ export const PRIVATE_DATA: ResumeData = {
         { id: "technicalSkills", title: "Technical Skills", isVisible: true },
         { id: "projects", title: "Projects", isVisible: true },
         { id: "experiences", title: "Experience", isVisible: true },
-        { id: "freelance", title: "Freelance Work", isVisible: true },
+        { id: "freelance", title: "Freelance Work", isVisible: true },{ id: "certifications", title: "certifications", isVisible: true }
+,
         { id: "education", title: "Education", isVisible: true },
     ]
 };
@@ -119,7 +120,10 @@ export const PUBLIC_DATA: ResumeData = {
         { id: "technicalSkills", title: "Technical Skills", isVisible: true },
         { id: "projects", title: "Projects", isVisible: true },
         { id: "experiences", title: "Experience", isVisible: true },
-        { id: "freelance", title: "Freelance Work", isVisible: true },
-        { id: "education", title: "Education", isVisible: true },
+        { id: "freelance", title: "Freelance Work", isVisible: true },{ id: "certifications", title: "certifications", isVisible: true }
+,
+        { id: "education", title: "Education", isVisible: true }
+, 
     ]
+,
 };
