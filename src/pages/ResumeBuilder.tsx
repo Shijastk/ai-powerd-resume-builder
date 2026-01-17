@@ -127,12 +127,11 @@ Check console for details.`, 'success');
         // Extensive list including new, stable, lite, and legacy models to maximize success chance.
         // corrected 'gemini-1.0-pro' to 'gemini-pro' as per API specs.
         const models = [
-            'gemini-2.5-flash',
-            'gemini-2.5-pro',
+            'gemini-3-flash-preview',
             'gemini-2.0-flash',
-            'gemini-2.0-flash-exp',
-            'gemini-flash-latest',
-            'gemini-pro-latest'
+            'gemini-1.5-flash',
+            'gemini-1.5-pro',
+            'gemini-pro'
         ];
         let lastError;
 
