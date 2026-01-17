@@ -221,6 +221,14 @@ ${models.map(m => `- ${m}: ${lastError?.message?.substring(0, 50)}...`).join('\n
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
 
+            // Calculate actual experience years to prevent hallucination
+            let minYear = new Date().getFullYear();
+            data.experiences?.forEach(exp => {
+                const match = exp.year?.match(/(\d{4})/);
+                if (match && parseInt(match[1]) < minYear) minYear = parseInt(match[1]);
+            });
+            const experienceDuration = `${new Date().getFullYear() - minYear}+`;
+
             // Enhanced prompt for 95%+ ATS score optimization
             const prompt = `You are an ATS Optimization Expert. Transform this resume to achieve 95%+ ATS score against the job description.
 
@@ -233,6 +241,12 @@ STRICT REQUIREMENTS:
 6. Optimize for ATS parsing (proper formatting, no graphics)
 7. Include specific technologies, tools, and methodologies from JD
 
+CRITICAL TECH CONSTRAINTS (WEB & JAVASCRIPT ECOSYSTEM ONLY):
+- **SCOPE**: Include **ANY** relevant tools/libraries from the Modern Web & JavaScript Ecosystem.
+  - **Examples (Good to add)**: Testing (Jest, Cypress, Vitest), State Management (Redux, Zustand, Recoil), UI component libraries, Animation libs, Build tools, API clients (Axios, React Query), WebSockets, Auth (Auth.js, Clerk)  - **Tools/Platforms**: Git, GitHub, GitLab, Docker, AWS (Web), Firebase, Supabase, Vercel, Netlify, CI/CD, (**AI/Modern Tech**: AI Integration, Gemini API, OpenAI API, LLMs, WebSockets, PWA (if needed  )).
+- **FORBIDDEN (STRICT)**: Python, Java, C, C++, C#, Go, Ruby, PHP, Rust, React Native, Native Mobile (Swift/Kotlin), Desktop (C++/ .NET), Data Science tools.
+- **RULE**: If JD asks for a forbidden skill (e.g. Python), DO NOT add it. Focus purely on Web/JS alternatives.
+
 CRITICAL LAYOUT RULE:
 - **Skill Categories MUST be short** (Max 2-3 words).
   - BAD: "Frontend Frameworks & Libraries"
@@ -243,8 +257,8 @@ JOB DESCRIPTION: ${jobDescription}
 CURRENT RESUME DATA: ${JSON.stringify(data)}
 
 OPTIMIZATION FOCUS:
-- **Summary**: Lead with JD keywords and required qualifications
-- **Skills**: Align with JD technical requirements. **Keep categories concise.**
+- **Summary**: Create a powerful 3-4 line professional summary. MUST mention: **${experienceDuration} years of experience**, **Key Job Title**, **Top 3 Skills** (matching JD), and **1-2 Major Project achievements** or Freelance highlights.
+- **Skills**: Align with JD technical requirements but **STRICTLY adhere to MERN/Web constraints**. **Keep categories concise.**
 - **Experience**: Mirror JD language and responsibilities
 - **Projects**: Connect to JD requirements with relevant tech
 - **Freelance**: Update descriptions to highlight relevant experience
