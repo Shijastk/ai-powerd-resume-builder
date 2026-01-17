@@ -12,6 +12,7 @@ import { InputField } from '../components/ui/InputField';
 import { SectionCard } from '../components/ui/SectionCard';
 import { ResumePreview } from '../components/ResumePreview';
 import { LoadingScreen } from '../components/LoadingScreen';
+import { Toast } from '../components/ui/Toast';
 
 export const ResumeBuilder = () => {
     const [data, setData] = useState<ResumeData>(() => {
@@ -28,7 +29,15 @@ export const ResumeBuilder = () => {
     const [latexCode, setLatexCode] = useState("");
     const [scale, setScale] = useState(1);
     const [showLoginModal, setShowLoginModal] = useState(false);
+    const [atsScore, setAtsScore] = useState<number | null>(null);
+    const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'warning' | 'info' } | null>(null);
     const resumeRef = useRef<HTMLDivElement>(null);
+
+    // Toast helper function
+    const showToast = (message: string, type: 'success' | 'error' | 'warning' | 'info' = 'info') => {
+        setToast({ message, type });
+        setTimeout(() => setToast(null), 5000); // Auto-dismiss after 5 seconds
+    };
 
     useEffect(() => {
         const timer = setTimeout(() => setInitialLoading(false), 2000);
@@ -63,7 +72,7 @@ export const ResumeBuilder = () => {
             setShowLoginModal(false);
             window.location.reload(); // Reload to refresh everything cleanly
         } else {
-            alert('Invalid credentials');
+            showToast('Invalid credentials. Please try again.', 'error');
         }
     };
 
@@ -93,71 +102,362 @@ export const ResumeBuilder = () => {
         setData(prev => ({ ...prev, [key]: [{ ...template, id }, ...(prev[key] as any[])] }));
     };
 
-    const handleOptimizeATS = async () => {
-        if (!jobDescription) return alert("Please paste a Job Description!");
-        setLoading(true);
+    const checkAvailableModels = async () => {
+        if (!process.env.API_KEY) return showToast("API Key missing! Please check your .env.local file.", 'error');
         try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            const prompt = `Tailor this resume for JD: "${jobDescription}". Data: ${JSON.stringify(data)}. Update the descriptions of the EXISTING projects and experiences to align with the JD. DO NOT create new projects. Enhance the highlights of the user's actual projects. Return valid JSON matching schema.`;
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${process.env.API_KEY}`);
+            const data = await response.json();
+            if (data.error) {
+                showToast(`API Error: ${JSON.stringify(data.error)}`, 'error');
+                return;
+            }
+            const modelNames = data.models?.map((m: any) => m.name) || [];
+            console.log("Available Models:", modelNames);
+            showToast(`Your API Key supports these models:
 
-            const response = await ai.models.generateContent({
-                model: 'gemini-3-flash-preview',
-                contents: prompt,
-                config: {
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                        type: Type.OBJECT,
-                        properties: {
-                            fullName: { type: Type.STRING },
-                            summary: { type: Type.STRING },
-                            technicalSkills: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { category: { type: Type.STRING }, skills: { type: Type.STRING } } } },
-                            experiences: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { company: { type: Type.STRING }, position: { type: Type.STRING }, location: { type: Type.STRING }, year: { type: Type.STRING }, highlights: { type: Type.ARRAY, items: { type: Type.STRING } } } } },
-                            projects: { type: Type.ARRAY, items: { type: Type.OBJECT, properties: { title: { type: Type.STRING }, subtitle: { type: Type.STRING }, techStack: { type: Type.STRING }, liveLink: { type: Type.STRING }, highlights: { type: Type.ARRAY, items: { type: Type.STRING } } } } }
-                        },
-                        required: ["fullName", "summary", "experiences", "projects"]
+${modelNames.map((n: string) => n.replace('models/', '')).join('\n')}
+
+Check console for details.`, 'success');
+        } catch (e: any) {
+            showToast("Failed to check models: " + e.message, 'error');
+        }
+    };
+
+    const generateWithFallback = async (ai: GoogleGenAI, prompt: string, schema?: any) => {
+        // Extensive list including new, stable, lite, and legacy models to maximize success chance.
+        // corrected 'gemini-1.0-pro' to 'gemini-pro' as per API specs.
+        const models = [
+            'gemini-2.5-flash',
+            'gemini-2.5-pro',
+            'gemini-2.0-flash',
+            'gemini-2.0-flash-exp',
+            'gemini-flash-latest',
+            'gemini-pro-latest'
+        ];
+        let lastError;
+
+        for (const model of models) {
+            try {
+                return await ai.models.generateContent({
+                    model,
+                    contents: prompt,
+                    config: schema ? {
+                        responseMimeType: "application/json",
+                        responseSchema: schema
+                    } : undefined
+                });
+            } catch (e: any) {
+                console.warn(`Model ${model} failed:`, e.message);
+                lastError = e;
+
+                if (e.message?.includes("PERMISSION_DENIED")) throw e;
+
+                // Handle Rate Limits (429)
+                if (e.message?.includes("429") || e.message?.includes("Quota exceeded")) {
+                    // Check for DAILY bucket exhaustion (limit: 0)
+                    if (e.message.includes("limit: 0") && e.message.includes("PerDay")) {
+                        console.error(`Daily Quota Exceeded for ${model}. Moving to next...`);
+                        continue;
+                    }
+
+                    console.log(`Rate limit on ${model}. Analyzing wait time...`);
+                    const match = e.message.match(/retry in (\d+(\.\d+)?)s/);
+                    const waitSeconds = match ? parseFloat(match[1]) + 2 : 10;
+
+                    // If wait is too long (> 60s), it's faster to just try the next model than to wait.
+                    if (waitSeconds > 60) {
+                        console.warn(`Wait time ${waitSeconds}s is too long. Skipping ${model}...`);
+                        continue;
+                    }
+
+                    console.log(`Waiting ${waitSeconds}s before retrying ${model}...`);
+                    await new Promise(resolve => setTimeout(resolve, waitSeconds * 1000));
+
+                    try {
+                        return await ai.models.generateContent({
+                            model,
+                            contents: prompt,
+                            config: schema ? {
+                                responseMimeType: "application/json",
+                                responseSchema: schema
+                            } : undefined
+                        });
+                    } catch (retryError: any) {
+                        console.warn(`Retry on ${model} also failed:`, retryError.message);
+                        lastError = retryError;
                     }
                 }
+                // For 404s (Not Found), we naturally loop to the next model.
+            }
+        }
+
+        // If we get here, ALL models failed. Let's diagnose!
+        console.error("All fallback models failed. Diagnosing available models...");
+        let available = [];
+        try {
+            // Re-use the fetch logic to get TRUTH
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${process.env.API_KEY}`);
+            const data = await response.json();
+            available = data.models?.map((m: any) => m.name.replace('models/', '')) || [];
+        } catch (e) {
+            console.error("Diagnostic check failed", e);
+        }
+
+        const diagMsg = `All AI models failed.
+
+Your API Key supports: ${available.join(', ') || 'Unknown (Check Connection)'}
+
+Errors encountered:
+${models.map(m => `- ${m}: ${lastError?.message?.substring(0, 50)}...`).join('\n')}`;
+        showToast(diagMsg, 'error');
+        throw new Error(diagMsg);
+    };
+    const handleOptimizeATS = async () => {
+        if (!process.env.API_KEY) {
+            showToast("API Key is missing! Please check your .env.local file and ensure 'GEMINI_API_KEY' is set.", 'error');
+            return;
+        }
+        if (!jobDescription) return showToast("Please paste a Job Description!", 'warning');
+        setLoading(true);
+        try {
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+
+            // Enhanced prompt for 95%+ ATS score optimization
+            const prompt = `You are an ATS Optimization Expert. Transform this resume to achieve 95%+ ATS score against the job description.
+
+STRICT REQUIREMENTS:
+1. Extract ALL technical keywords, soft skills, and qualifications from JD
+2. Integrate keywords naturally throughout the resume (Summary, Skills, Experience, Projects, Freelance)
+3. Use action verbs from JD in experience/project highlights
+4. Match job title variations if applicable
+5. Preserve candidate's real experiences and accomplishments
+6. Optimize for ATS parsing (proper formatting, no graphics)
+7. Include specific technologies, tools, and methodologies from JD
+
+CRITICAL LAYOUT RULE:
+- **Skill Categories MUST be short** (Max 2-3 words).
+  - BAD: "Frontend Frameworks & Libraries"
+  - GOOD: "Frontend", "Libraries", "Backend", "Tools", "DevOps"
+
+JOB DESCRIPTION: ${jobDescription}
+
+CURRENT RESUME DATA: ${JSON.stringify(data)}
+
+OPTIMIZATION FOCUS:
+- **Summary**: Lead with JD keywords and required qualifications
+- **Skills**: Align with JD technical requirements. **Keep categories concise.**
+- **Experience**: Mirror JD language and responsibilities
+- **Projects**: Connect to JD requirements with relevant tech
+- **Freelance**: Update descriptions to highlight relevant experience
+
+Return ONLY valid JSON matching the resume schema.`;
+
+            const response = await generateWithFallback(ai, prompt, {
+                type: Type.OBJECT,
+                properties: {
+                    fullName: { type: Type.STRING },
+                    summary: { type: Type.STRING },
+                    technicalSkills: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                category: { type: Type.STRING, description: "Short category name (e.g. 'Frontend', 'Backend')" },
+                                skills: { type: Type.STRING }
+                            }
+                        }
+                    },
+                    experiences: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                company: { type: Type.STRING },
+                                position: { type: Type.STRING },
+                                location: { type: Type.STRING },
+                                year: { type: Type.STRING },
+                                highlights: { type: Type.ARRAY, items: { type: Type.STRING } }
+                            }
+                        }
+                    },
+                    projects: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                title: { type: Type.STRING },
+                                subtitle: { type: Type.STRING },
+                                techStack: { type: Type.STRING },
+                                liveLink: { type: Type.STRING },
+                                liveLinkLabel: { type: Type.STRING },
+                                highlights: { type: Type.ARRAY, items: { type: Type.STRING } }
+                            }
+                        }
+                    },
+                    freelance: {
+                        type: Type.ARRAY,
+                        items: {
+                            type: Type.OBJECT,
+                            properties: {
+                                project: { type: Type.STRING },
+                                role: { type: Type.STRING },
+                                duration: { type: Type.STRING },
+                                highlights: { type: Type.ARRAY, items: { type: Type.STRING } }
+                            }
+                        }
+                    }
+                },
+                required: ["fullName", "summary", "technicalSkills", "experiences", "projects"]
             });
 
-            if (response.text) {
+            if (response?.text) {
                 const optimized = JSON.parse(response.text.trim());
                 const processArray = (arr: any[]) => arr?.map(item => ({ ...item, id: item.id || Math.random().toString(36).substr(2, 9) })) || [];
 
                 setData(prev => ({
                     ...prev,
-                    ...optimized,
+                    fullName: optimized.fullName || prev.fullName,
+                    summary: optimized.summary || prev.summary,
+                    technicalSkills: optimized.technicalSkills || prev.technicalSkills,
                     experiences: processArray(optimized.experiences || prev.experiences),
                     projects: processArray(optimized.projects || prev.projects),
-                    technicalSkills: optimized.technicalSkills || prev.technicalSkills,
+                    freelance: processArray(optimized.freelance || prev.freelance),
                 }));
+
                 setActiveTab('preview');
+                showToast("✅ High-ATS Resume Generated!\n\nOptimized for 95%+ ATS score:\n• Keywords integrated naturally\n• Action verbs from JD used\n• Skills aligned with requirements\n• Experience tailored to role\n• Projects connected to JD\n\nReview the Preview tab.", 'success');
             }
         } catch (e: any) {
             console.error("Optimization failed:", e);
             if (e.message?.includes("PERMISSION_DENIED") || e.message?.includes("403")) {
-                alert("Permission Error. Please use the Key icon in the top right to select a valid API key.");
+                showToast("Permission Error. Please use the Key icon in the top right to select a valid API key.", 'error');
+            } else if (e.message?.includes("429")) {
+                if (e.message.includes("limit: 0")) {
+                    showToast("Daily Quota Exceeded. You have used up your free allowance for today. Please try again tomorrow or use a different API key.", 'warning');
+                } else {
+                    showToast("Server busy (Rate Limit). Please wait a moment and try again.", 'warning');
+                }
             } else {
-                alert("Failed to optimize. Please try again.");
+                // Try to parse clean message if it's JSON
+                let msg = e.message || "Unknown error";
+                try {
+                    const json = JSON.parse(msg.substring(msg.indexOf('{')));
+                    if (json.error?.message) msg = json.error.message;
+                } catch { }
+                showToast(`Failed to optimize: ${msg}`, 'error');
             }
         } finally {
             setLoading(false);
         }
     };
 
-    const handleGenerateCoverLetter = async () => {
-        if (!jobDescription) return alert("Please paste a Job Description!");
+    const calculateATSScore = async () => {
+        if (!jobDescription) return showToast("Please paste a Job Description to calculate ATS Score!", 'warning');
         setLoading(true);
         try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+
+            // Create a comprehensive resume text from the data
+            const resumeText = `
+                Full Name: ${data.fullName}
+                Location: ${data.location}
+                Email: ${data.email}
+                Phone: ${data.phone}
+                Links: ${data.links?.map(l => `${l.label}: ${l.url}`).join(', ')}
+                Summary: ${data.summary}
+                Technical Skills: ${data.technicalSkills?.map(s => `${s.category}: ${s.skills}`).join('; ')}
+                Experience: ${data.experiences?.map(exp => `${exp.position} at ${exp.company} (${exp.year}). Details: ${exp.highlights?.join(', ')} `).join('; ')}
+                Projects: ${data.projects?.map(proj => `${proj.title}. Tech: ${proj.techStack}. Details: ${proj.highlights?.join(', ')} `).join('; ')}
+                Education: ${data.education?.map(edu => `${edu.degree} in ${edu.major} at ${edu.school} (${edu.year})`).join('; ')}
+                Certifications: ${data.certifications?.map(cert => `${cert.name} from ${cert.issuer} (${cert.year})`).join('; ')}
+                Freelance: ${data.freelance?.map(free => `${free.role} - ${free.project} (${free.duration}). Details: ${free.highlights?.join(', ')} `).join('; ')}
+                Others: ${data.others?.map(other => `${other.title}: ${other.description}`).join('; ')}
+            `;
+
+            const prompt = `Evaluate this resume against the job description for ATS compatibility and HR appeal. Score from 0-100% based on:
+            1. Keyword matching (40% of score) - Technical terms, skills, qualifications from JD
+            2. Skills alignment (25% of score) - Relevance to job requirements
+            3. Experience relevance (20% of score) - Past roles matching job expectations
+            4. ATS formatting (15% of score) - Proper structure, no complex formatting
+            
+            RESUME TEXT: ${resumeText}
+            
+            JOB DESCRIPTION: ${jobDescription}
+            
+            Provide exact match percentage and suggest improvements.
+            
+            Respond with ONLY a number between 0 and 100, followed by a brief explanation of the score. Format: "SCORE: XX% - Explanation: [specific strengths and recommendations for improvement]"`;
+
+            const response = await generateWithFallback(ai, prompt);
+
+            if (response?.text) {
+                const responseText = response.text.trim();
+                // Extract score from response
+                const scoreMatch = responseText.match(/SCORE:\s*(\d+)%|\b(\d+)%\b/);
+                const score = scoreMatch ? parseInt(scoreMatch[1] || scoreMatch[2]) : 0;
+                setAtsScore(score);
+                showToast(`ATS Score: ${score}%\n\n${responseText}`, 'success');
+            }
+        } catch (e: any) {
+            console.error("ATS Score calculation failed:", e);
+            showToast("Failed to calculate ATS Score. Please try again.", 'error');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleGenerateCoverLetter = async () => {
+        if (!jobDescription) return showToast("Please paste a Job Description!", 'warning');
+        setLoading(true);
+        try {
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+
+            // Build context from current resume data
+            const resumeContext = `
+Professional Summary: ${data.summary}
+Top Skills: ${data.technicalSkills?.slice(0, 3).map(s => `${s.category}: ${s.skills}`).join('; ')}
+Key Projects: ${data.projects?.slice(0, 2).map(p => p.title).join(', ')}
+Recent Experience: ${data.experiences?.[0]?.position || ''} at ${data.experiences?.[0]?.company || ''}
+            `.trim();
+
             const contactInfo = `Email: ${data.email}, Phone: ${data.phone}, Links: ${data.links?.map(l => l.url).join(', ')}`;
-            const prompt = `Candidate: ${data.fullName}. Contact Info: ${contactInfo}. JD: ${jobDescription}. Write a professional cover email draft. Use bolding (markdown **) for key skills and achievements. INTEGRATE the candidate's phone number and links naturally into the signature or header. DO NOT use placeholders like "[Phone]" or "[Link]" - use the actual data provided.`;
-            const response = await ai.models.generateContent({ model: 'gemini-3-flash-preview', contents: prompt });
-            if (response.text) {
+
+            const prompt = `Create an ATS-optimized, HR-appealing cover letter that achieves 95%+ ATS score and gets noticed by recruiters.
+
+CANDIDATE INFO:
+- Name: ${data.fullName}
+- Contact: ${contactInfo}
+- Background: ${resumeContext}
+
+JOB REQUIREMENTS:
+- JD: ${jobDescription}
+
+COVER LETTER SPECIFICATIONS:
+1. Start with a compelling hook mentioning the role and company
+2. Integrate top 8-10 keywords from JD naturally (don't stuff keywords)
+3. Match the tone and language from the JD
+4. Include 3 bullet points highlighting achievements that match JD requirements
+5. Connect candidate's experience to company's needs
+6. End with a strong call to action
+7. Use professional, clean formatting
+8. Target length: 250-350 words
+9. Include subject line that includes role and candidate name
+
+Return complete cover email with subject line.`;
+
+            const response = await generateWithFallback(ai, prompt);
+
+            if (response?.text) {
                 setCoverLetter(response.text);
             }
             setActiveTab('cover');
         } catch (e: any) {
             console.error("Cover letter failed:", e);
+            if (e.message?.includes("429")) {
+                showToast("Server busy (Rate Limit). Please wait a moment and try again.", 'warning');
+            } else {
+                showToast("Failed to generate cover letter. Please try again.", 'error');
+            }
         } finally {
             setLoading(false);
         }
@@ -226,6 +526,7 @@ export const ResumeBuilder = () => {
                     pdf.save(`${data.fullName.replace(/\s+/g, '_')}_Resume.pdf`);
                     breaks.forEach(b => (b as HTMLElement).style.display = 'flex');
                     setLoading(false);
+                    showToast('✅ Resume PDF downloaded successfully!', 'success');
                 },
                 x: 0, y: 0, width: 210, windowWidth: 794,
                 autoPaging: 'text', margin: [10, 0, 15, 0],
@@ -236,6 +537,7 @@ export const ResumeBuilder = () => {
             const breaks = el?.querySelectorAll('.page-break-line');
             if (breaks) breaks.forEach(b => (b as HTMLElement).style.display = 'flex');
             setLoading(false);
+            showToast('Failed to generate PDF. Please try again.', 'error');
         }
     };
 
@@ -284,15 +586,18 @@ export const ResumeBuilder = () => {
 
                 <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
                     {[{ id: 'editor', icon: PenTool, label: 'Editor' }, { id: 'preview', icon: Eye, label: 'Preview' }, { id: 'cover', icon: Mail, label: 'Cover' }].map(tab => (
-                        <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`flex items-center gap-2 px-5 py-2 text-xs font-bold rounded-lg transition-all ${activeTab === tab.id ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-                            <tab.icon size={14} /> {tab.label}
+                        <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-5 py-2 text-xs font-bold rounded-lg transition-all ${activeTab === tab.id ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+                            <tab.icon size={14} /> <span className="hidden xs:inline">{tab.label}</span>
                         </button>
                     ))}
                 </div>
 
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 sm:gap-4">
                     <button onClick={handleManualKeySelection} className="p-2 text-slate-400 hover:text-blue-600 transition-colors" title="Select API Key Manually">
                         <Key size={18} />
+                    </button>
+                    <button onClick={checkAvailableModels} className="p-2 text-slate-400 hover:text-blue-600 transition-colors" title="Test API Connection">
+                        <Zap size={18} />
                     </button>
                     <button
                         onClick={async () => {
@@ -306,9 +611,9 @@ export const ResumeBuilder = () => {
                     >
                         <Code size={18} />
                     </button>
-                    <button onClick={downloadPDF} disabled={loading} className="bg-slate-900 text-white px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-slate-800 transition-all shadow-lg disabled:opacity-50">
+                    <button onClick={downloadPDF} disabled={loading} className="bg-slate-900 text-white px-3 sm:px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 hover:bg-slate-800 transition-all shadow-lg disabled:opacity-50">
                         {loading ? <div className="animate-spin h-3 w-3 border-2 border-white/20 border-t-white rounded-full" /> : <Download size={16} />}
-                        {loading ? 'Processing' : 'Download PDF'}
+                        <span className="hidden sm:inline">{loading ? 'Processing' : 'Download PDF'}</span>
                     </button>
                 </div>
             </nav>
@@ -320,19 +625,42 @@ export const ResumeBuilder = () => {
                             <div className="flex items-center gap-3 mb-4">
                                 <div className="bg-white/20 p-2 rounded-lg"><Sparkles size={20} /></div>
                                 <h3 className="text-sm font-black uppercase tracking-widest">ATS Alignment Engine</h3>
+                                {atsScore !== null && (
+                                    <div className="ml-auto bg-white/20 px-3 py-1 rounded-full text-xs font-bold">
+                                        ATS Score: {atsScore}%
+                                    </div>
+                                )}
                             </div>
                             <textarea
                                 value={jobDescription}
                                 onChange={(e) => setJobDescription(e.target.value)}
-                                placeholder="Paste Job Description here... Gemini will tailor sections and generate 3-4 professional projects to match."
+                                placeholder="Paste Job Description here... AI will extract ATS keywords and optimize your resume: Skills, Summary, Projects, Experience, and Cover Letter. Aim for 95%+ ATS Score!"
                                 className="w-full h-40 bg-white/10 border border-white/20 rounded-2xl p-5 text-sm placeholder:text-white/40 outline-none focus:bg-white/20 transition-all mb-4 shadow-inner"
                             />
-                            <div className="flex gap-4">
-                                <button onClick={handleOptimizeATS} disabled={loading} className="flex-1 py-4 bg-white text-blue-700 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-blue-50 transition-all shadow-xl disabled:opacity-50">
-                                    {loading ? "Engineering..." : "create"}
+                            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
+                                <button onClick={handleOptimizeATS} disabled={loading} className="w-full sm:flex-1 py-3 sm:py-4 bg-white text-blue-700 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-blue-50 transition-all shadow-xl disabled:opacity-50">
+                                    {loading ? (
+                                        <span className="flex items-center justify-center gap-2">
+                                            <div className="animate-spin h-3 w-3 border-2 border-blue-700/20 border-t-blue-700 rounded-full" />
+                                            Optimizing...
+                                        </span>
+                                    ) : "Optimize Resume"}
                                 </button>
-                                <button onClick={handleGenerateCoverLetter} disabled={loading} className="px-8 py-4 bg-blue-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-blue-400 transition-all shadow-xl disabled:opacity-50">
-                                    {loading ? "Writing..." : "Generate Cover Email"}
+                                <button onClick={calculateATSScore} disabled={loading} className="w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-4 bg-green-600 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-green-500 transition-all shadow-xl disabled:opacity-50">
+                                    {loading ? (
+                                        <span className="flex items-center justify-center gap-2">
+                                            <div className="animate-spin h-3 w-3 border-2 border-white/20 border-t-white rounded-full" />
+                                            Calculating...
+                                        </span>
+                                    ) : "ATS Score"}
+                                </button>
+                                <button onClick={handleGenerateCoverLetter} disabled={loading} className="w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-4 bg-blue-500 text-white rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-blue-400 transition-all shadow-xl disabled:opacity-50">
+                                    {loading ? (
+                                        <span className="flex items-center justify-center gap-2">
+                                            <div className="animate-spin h-3 w-3 border-2 border-white/20 border-t-white rounded-full" />
+                                            Generating...
+                                        </span>
+                                    ) : "Cover Email"}
                                 </button>
                             </div>
                         </div>
@@ -361,7 +689,6 @@ export const ResumeBuilder = () => {
 
                         {data.sections?.map((section, index) => {
                             const sectionProps = {
-                                key: section.id,
                                 id: section.id,
                                 title: section.title,
                                 isVisible: section.isVisible,
@@ -392,13 +719,13 @@ export const ResumeBuilder = () => {
                             switch (section.id) {
                                 case 'summary':
                                     return (
-                                        <SectionCard {...sectionProps} icon={MessageSquare}>
+                                        <SectionCard key={section.id} {...sectionProps} icon={MessageSquare}>
                                             <InputField isTextArea label="Profile Objective" value={data.summary} onChange={(v: string) => setData({ ...data, summary: v })} />
                                         </SectionCard>
                                     );
                                 case 'technicalSkills':
                                     return (
-                                        <SectionCard {...sectionProps} icon={Layers} onAdd={() => addItem('technicalSkills', { category: '', skills: '' })}>
+                                        <SectionCard key={section.id} {...sectionProps} icon={Layers} onAdd={() => addItem('technicalSkills', { category: '', skills: '' })}>
                                             <div className="space-y-4">
                                                 {(data.technicalSkills || []).map((s, idx) => (
                                                     <div key={idx} className="p-4 bg-slate-50 border border-slate-100 rounded-2xl relative">
@@ -414,7 +741,7 @@ export const ResumeBuilder = () => {
                                     );
                                 case 'experiences':
                                     return (
-                                        <SectionCard {...sectionProps} icon={Briefcase} onAdd={() => addItem('experiences', { company: '', position: '', location: '', year: '', highlights: [''] })}>
+                                        <SectionCard key={section.id} {...sectionProps} icon={Briefcase} onAdd={() => addItem('experiences', { company: '', position: '', location: '', year: '', highlights: [''] })}>
                                             <div className="space-y-6">
                                                 {(data.experiences || []).map((exp) => (
                                                     <div key={exp.id} className="p-6 bg-slate-50 border border-slate-100 rounded-3xl relative space-y-4">
@@ -433,7 +760,7 @@ export const ResumeBuilder = () => {
                                     );
                                 case 'projects':
                                     return (
-                                        <SectionCard {...sectionProps} icon={Code} onAdd={() => addItem('projects', { title: '', subtitle: '', techStack: '', liveLink: '', highlights: [''] })}>
+                                        <SectionCard key={section.id} {...sectionProps} icon={Code} onAdd={() => addItem('projects', { title: '', subtitle: '', techStack: '', liveLink: '', highlights: [''] })}>
                                             <div className="space-y-6">
                                                 {(data.projects || []).map((proj) => (
                                                     <div key={proj.id} className="p-6 bg-slate-50 border border-slate-100 rounded-3xl relative space-y-4">
@@ -452,7 +779,7 @@ export const ResumeBuilder = () => {
                                     );
                                 case 'freelance':
                                     return (
-                                        <SectionCard {...sectionProps} icon={Briefcase} onAdd={() => addItem('freelance', { project: '', role: '', duration: '', highlights: [''] })}>
+                                        <SectionCard key={section.id} {...sectionProps} icon={Briefcase} onAdd={() => addItem('freelance', { project: '', role: '', duration: '', highlights: [''] })}>
                                             <div className="space-y-6">
                                                 {(data.freelance || []).map((free) => (
                                                     <div key={free.id} className="p-6 bg-slate-50 border border-slate-100 rounded-3xl relative space-y-4">
@@ -470,7 +797,7 @@ export const ResumeBuilder = () => {
                                     );
                                 case 'certifications':
                                     return (
-                                        <SectionCard {...sectionProps} icon={GraduationCap} onAdd={() => addItem('certifications', { name: '', issuer: '', year: '' })}>
+                                        <SectionCard key={section.id} {...sectionProps} icon={GraduationCap} onAdd={() => addItem('certifications', { name: '', issuer: '', year: '' })}>
                                             <div className="space-y-4">
                                                 {(data.certifications || []).map((cert) => (
                                                     <div key={cert.id} className="p-4 bg-slate-50 border border-slate-100 rounded-2xl relative">
@@ -487,7 +814,7 @@ export const ResumeBuilder = () => {
                                     );
                                 case 'education':
                                     return (
-                                        <SectionCard {...sectionProps} icon={GraduationCap} onAdd={() => addItem('education', { school: '', degree: '', major: '', year: '', result: '' })}>
+                                        <SectionCard key={section.id} {...sectionProps} icon={GraduationCap} onAdd={() => addItem('education', { school: '', degree: '', major: '', year: '', result: '' })}>
                                             <div className="space-y-6">
                                                 {(data.education || []).map((edu) => (
                                                     <div key={edu.id} className="p-6 bg-slate-50 border border-slate-100 rounded-3xl relative space-y-4">
@@ -506,7 +833,7 @@ export const ResumeBuilder = () => {
                                     );
                                 case 'others':
                                     return (
-                                        <SectionCard {...sectionProps} icon={Zap} onAdd={() => addItem('others', { title: '', description: '' })}>
+                                        <SectionCard key={section.id} {...sectionProps} icon={Zap} onAdd={() => addItem('others', { title: '', description: '' })}>
                                             <div className="space-y-4">
                                                 {(data.others || []).map((item) => (
                                                     <div key={item.id} className="p-4 bg-slate-50 border border-slate-100 rounded-2xl relative">
@@ -544,8 +871,20 @@ export const ResumeBuilder = () => {
                                 {coverLetter && (
                                     <div className="flex items-center gap-3">
                                         <button onClick={() => {
-                                            const subject = `Application for Role - ${data.fullName}`;
-                                            const body = coverLetter.replace(/[*]+/g, ''); // Strip all markdown stars for plain text
+                                            // Extract subject (clean markdown if any)
+                                            const subjectMatch = coverLetter.match(/^Subject:\s*(.+)/im);
+                                            const subject = subjectMatch ? subjectMatch[1].replace(/[\*\_\#]/g, '').trim() : `Application for Role - ${data.fullName}`;
+
+                                            // Prepare clean plain-text body
+                                            let body = coverLetter
+                                                .replace(/^Subject:.*$/im, '') // Remove subject line
+                                                .replace(/^\s*[\*•-]\s+/gm, '<<<BULLET>>>') // Protect lists
+                                                .replace(/[\*\#\_]/g, '') // Remove all remaining markdown (*, #, _)
+                                                .replace(/<<<BULLET>>>/g, '\n   • ') // Restore bullets with indentation
+                                                .replace(/([A-Z][a-z]+:)/g, '\n$1') // Ensure "Sincerely:", "Dear:", etc start on new lines if clustered
+                                                .replace(/\n{3,}/g, '\n\n') // Collapse excessive white space
+                                                .trim();
+
                                             window.open(`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`);
                                         }} className="px-5 py-2 text-xs font-bold rounded-xl bg-blue-600 text-white flex items-center gap-2 hover:bg-blue-700 transition-all shadow-lg">
                                             <Send size={14} /> Open Email
@@ -641,6 +980,15 @@ export const ResumeBuilder = () => {
                         )}
                     </div>
                 </div>
+            )}
+
+            {/* Toast Notification */}
+            {toast && (
+                <Toast
+                    message={toast.message}
+                    type={toast.type}
+                    onClose={() => setToast(null)}
+                />
             )}
 
             <style>{`.break-inside-avoid { page-break-inside: avoid; break-inside: avoid; }`}</style>
