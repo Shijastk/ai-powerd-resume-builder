@@ -132,6 +132,19 @@ ${escape(data.summary)}
                 }
                 break;
 
+            case 'certifications':
+                if (data.certifications && data.certifications.length > 0) {
+                    content += `
+\\section*{${section.title.toUpperCase()}}
+\\begin{itemize}[leftmargin=*, label={}]
+`;
+                    data.certifications.forEach(cert => {
+                        content += `    \\item \\textbf{${escape(cert.name)}} -- \\textit{${escape(cert.issuer)}} \\hfill \\textbf{${escape(cert.year)}}\n`;
+                    });
+                    content += `\\end{itemize}\n`;
+                }
+                break;
+
             case 'education':
                 if (data.education && data.education.length > 0) {
                     content += `
