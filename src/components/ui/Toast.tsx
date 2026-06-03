@@ -43,7 +43,7 @@ export const Toast: React.FC<ToastProps> = ({ message, type, onClose }) => {
 
     return (
         <div className={`fixed top-24 right-8 z-[200] animate-in slide-in-from-top-4 fade-in duration-300 max-w-md`}>
-            <div className={`${bgColor} ${textColor} border-l-4 ${borderColor} rounded-2xl shadow-2xl p-4 pr-12 backdrop-blur-sm`}>
+            <div className={`${bgColor} ${textColor} border border-l-4 ${borderColor} rounded-xl p-4 pr-12 backdrop-blur-sm`}>
                 <div className="flex items-start gap-3">
                     <Icon className={`${iconColor} flex-shrink-0 mt-0.5`} size={20} />
                     <p className="text-sm font-medium leading-relaxed whitespace-pre-line">{message}</p>

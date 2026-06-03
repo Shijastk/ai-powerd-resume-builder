@@ -1,9 +1,14 @@
 import React from 'react';
 
-export const ResumeSection = ({ title, children }: { title: string, children?: React.ReactNode }) => (
+interface ResumeSectionProps {
+    title: string;
+    children?: React.ReactNode;
+}
+
+export const ResumeSection: React.FC<ResumeSectionProps> = ({ title, children }) => (
     <section className="mb-6">
         <div style={{ breakInside: 'avoid', pageBreakInside: 'avoid' }}>
-            <h2 className="text-[12pt] font-bold text-black uppercase tracking-tight font-serif mb-2">
+            <h2 className="text-[12pt] font-bold text-black uppercase tracking-tighter font-serif mb-0.5">
                 {title}
             </h2>
             <div className="border-b-[0.5pt] border-black w-full mb-2"></div>

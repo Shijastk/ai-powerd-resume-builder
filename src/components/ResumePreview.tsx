@@ -1,259 +1,309 @@
-import React from 'react';
+import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ResumeData } from '../types/resume';
-import { ResumeSection } from './ResumeSection';
+import { getLinkDisplay, normalizeUrl } from '../utils/links';
 
-const normalizeUrl = (url: string) => {
-    if (!url) return '';
+// ---- A4 geometry (matches the PDF exporter) ----
+const PX_PER_MM = 96 / 25.4; // browsers render mm at 96dpi
+const MARGIN_T = 18;
+const MARGIN_B = 15;
+const PAGE_CONTENT_PX = (297 - MARGIN_T - MARGIN_B) * PX_PER_MM; // usable height per sheet
 
-    // already has protocol
-    if (/^https?:\/\//i.test(url)) return url;
-
-    // starts with www
-    if (/^www\./i.test(url)) return `https://${url}`;
-
-    // plain domain → add https://www.
-    return `https://www.${url}`;
+// Shared base look for the resume sheets (kept identical to the old single-page preview).
+const sheetBaseStyle: React.CSSProperties = {
+    fontFamily: "'Computer Modern Serif', serif",
+    lineHeight: 1.45,
+    color: '#000000',
+    letterSpacing: 'normal',
+    wordSpacing: 'normal',
+    textAlign: 'left',
 };
 
+type Block = { key: string; node: React.ReactNode };
 
-export const ResumePreview = React.forwardRef<HTMLDivElement, { data: ResumeData }>(({ data }, ref) => (
-    <div
-        ref={ref}
-        id="resume-a4-page"
-        className="bg-white text-black mx-auto"
-        style={{
-            width: '210mm',
-            minHeight: '297mm',
-            padding: '0mm 20mm 15mm 20mm',
-            boxSizing: 'border-box',
-            backgroundColor: '#ffffff',
-            fontFamily: "'Times New Roman', Times, serif",
-            display: 'flex',
-            flexDirection: 'column',
-            lineHeight: '1.45',
-            textAlign: 'left',
-            wordSpacing: 'normal',
-            letterSpacing: 'normal'
-        }}
-    >
+const SectionHeading: React.FC<{ title: string }> = ({ title }) => (
+    <div>
+        <h2 className="text-[12pt] font-bold text-black uppercase tracking-tighter font-serif mb-0.5">{title}</h2>
+        <div className="border-b-[0.5pt] border-black w-full mb-2"></div>
+    </div>
+);
 
+const Bullets: React.FC<{ items?: string[] }> = ({ items }) => (
+    <ul className="mt-1.5 space-y-1 list-disc pl-5 text-[11pt]">
+        {(items || [])
+            .filter((h) => h.trim())
+            .map((h, j) => (
+                <li key={j} className="text-black leading-snug">
+                    {h}
+                </li>
+            ))}
+    </ul>
+);
 
-        {/* Header Section */}
-        <header
-            className="mb-6"
-            style={{
-                textAlign: 'center',
-                wordSpacing: 'normal',
-                letterSpacing: 'normal',
-            }}
-        >
-            <h1 className="text-[28pt] font-bold uppercase mb-1 leading-none">
-                {data.fullName}
-            </h1>
+const Header: React.FC<{ data: ResumeData }> = ({ data }) => (
+    <header className="mb-6" style={{ textAlign: 'center' }}>
+        <h1 className="text-[28pt] font-bold uppercase mb-1 leading-none">{data.fullName}</h1>
+        <div className="text-[10.5pt] mb-1">
+            <span>{data.location}</span>
+            <span className="mx-2">|</span>
+            <span>{data.phone}</span>
+            <span className="mx-2">|</span>
+            <a href={`mailto:${data.email}`} className="text-blue-600 no-underline hover:underline">
+                {data.email}
+            </a>
+        </div>
+        <div className="text-[10.5pt]">
+            {(data.links || []).map((link, idx) => (
+                <React.Fragment key={link.id}>
+                    <a
+                        href={normalizeUrl(link.url)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-600 no-underline hover:underline italic"
+                    >
+                        {getLinkDisplay(link.url, link.label)}
+                    </a>
+                    {idx < data.links.length - 1 && <span className="mx-2">|</span>}
+                </React.Fragment>
+            ))}
+        </div>
+    </header>
+);
 
-            <div className="text-[10.5pt] mb-1">
-                <span>{data.location}</span>
-                <span className="mx-2">|</span>
-                <span>{data.phone}</span>
-                <span className="mx-2">|</span>
-                <a
-                    href={`mailto:${data.email}`}
-                    style={{ wordSpacing: 'normal' }}
-                    className="text-blue-600 no-underline hover:underline"
-                >
-                    {data.email}
-                </a>
-            </div>
+/**
+ * Flattens the resume into an ordered list of atomic blocks. Each section becomes
+ * a heading-block (heading + its first entry, so the heading never orphans) followed
+ * by one block per remaining entry. Blocks are the smallest unit the paginator moves
+ * between pages, mirroring how the PDF breaks between entries.
+ */
+const buildBlocks = (data: ResumeData): Block[] => {
+    const blocks: Block[] = [{ key: 'header', node: <Header data={data} /> }];
 
+    data.sections.forEach((section) => {
+        if (!section.isVisible) return;
+
+        const entries: React.ReactNode[] = [];
+
+        switch (section.id) {
+            case 'summary':
+                if (!data.summary) return;
+                entries.push(<p className="text-[11pt] leading-snug text-black mb-2">{data.summary}</p>);
+                break;
+
+            case 'experiences':
+                (data.experiences || []).forEach((exp) =>
+                    entries.push(
+                        <div className="mb-5">
+                            <div className="flex justify-between items-baseline font-bold text-[11pt]">
+                                <p className=" text-left tracking-tighter">{exp.company}</p>
+                                <span className="shrink-0 ml-4">{exp.year}</span>
+                            </div>
+                            <div className="flex justify-between items-baseline italic text-[11pt] mb-1">
+                                <span>{exp.position}</span>
+                                <span className="shrink-0 ml-4">{exp.location}</span>
+                            </div>
+                            <Bullets items={exp.highlights} />
+                        </div>
+                    )
+                );
+                break;
+
+            case 'technicalSkills':
+                (data.technicalSkills || []).forEach((s) =>
+                    entries.push(
+                        <div className="text-[11pt] flex gap-1.5 items-start leading-snug mb-0.5">
+                            <span className="font-bold text-black whitespace-nowrap text-left">{s.category}:</span>
+                            <span className="text-black flex-1">{s.skills}</span>
+                        </div>
+                    )
+                );
+                break;
+
+            case 'projects':
+                (data.projects || []).forEach((proj) =>
+                    entries.push(
+                        <div className="mb-4">
+                            <div className="flex justify-between items-baseline gap-4 mb-1">
+                                <span className="font-bold text-[11pt] text-black uppercase">{proj.title}</span>
+                                <span className="text-[10pt] italic shrink-0 text-right">
+                                    {proj.liveLink ? (
+                                        <a
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-blue-600 hover:underline whitespace-nowrap"
+                                            href={normalizeUrl(proj.liveLink)}
+                                        >
+                                            {getLinkDisplay(proj.liveLink, proj.liveLinkLabel)}
+                                        </a>
+                                    ) : (
+                                        proj.subtitle
+                                    )}
+                                </span>
+                            </div>
+                            {proj.techStack && <div className="text-[10pt] italic mb-1.5">({proj.techStack})</div>}
+                            <Bullets items={proj.highlights} />
+                        </div>
+                    )
+                );
+                break;
+
+            case 'freelance':
+                (data.freelance || []).forEach((free) =>
+                    entries.push(
+                        <div className="mb-5">
+                            <div className="flex justify-between items-baseline font-bold text-[11pt]">
+                                <span>{free.project}</span>
+                                <span className="shrink-0 ml-4">{free.duration}</span>
+                            </div>
+                            <div className="italic text-[11pt] mb-1">
+                                <span>{free.role}</span>
+                            </div>
+                            <Bullets items={free.highlights} />
+                        </div>
+                    )
+                );
+                break;
+
+            case 'certifications':
+                (data.certifications || []).forEach((cert) =>
+                    entries.push(
+                        <div className="flex justify-between items-baseline text-[11pt] mb-2">
+                            <div className="flex-1">
+                                <span className="font-bold text-black">{cert.name}</span>
+                                <span className="mx-1 text-black">-</span>
+                                <span className="text-black italic">{cert.issuer}</span>
+                            </div>
+                            <span className="font-bold text-black shrink-0 ml-4">{cert.year}</span>
+                        </div>
+                    )
+                );
+                break;
+
+            case 'education':
+                (data.education || []).forEach((edu) =>
+                    entries.push(
+                        <div className="mb-4">
+                            <div className="flex justify-between items-baseline font-bold text-[11pt]">
+                                <span>{edu.school}</span>
+                                <span className="shrink-0 ml-4">{edu.year}</span>
+                            </div>
+                            <div className="flex justify-between items-baseline italic text-[11pt]">
+                                <span>
+                                    {edu.degree} in {edu.major}
+                                </span>
+                                <span className="shrink-0 ml-4">{edu.result}</span>
+                            </div>
+                        </div>
+                    )
+                );
+                break;
+
+            case 'others':
+                (data.others || []).forEach((item) =>
+                    entries.push(
+                        <div className="mb-3">
+                            <span className="font-bold text-[11pt] text-black mr-2">{item.title}:</span>
+                            <span className="text-[11pt] text-black leading-snug">{item.description}</span>
+                        </div>
+                    )
+                );
+                break;
+        }
+
+        if (!entries.length) return;
+
+        // First block keeps the heading together with the first entry.
+        blocks.push({
+            key: `${section.id}-head`,
+            node: (
+                <div>
+                    <SectionHeading title={section.title} />
+                    {entries[0]}
+                </div>
+            ),
+        });
+        entries.slice(1).forEach((node, i) => blocks.push({ key: `${section.id}-${i}`, node }));
+    });
+
+    return blocks;
+};
+
+/** Greedily packs blocks (by measured height) into A4-page-sized buckets. */
+const paginate = (heights: number[]): number[][] => {
+    const pages: number[][] = [];
+    let current: number[] = [];
+    let used = 0;
+    heights.forEach((h, i) => {
+        if (current.length && used + h > PAGE_CONTENT_PX) {
+            pages.push(current);
+            current = [];
+            used = 0;
+        }
+        current.push(i);
+        used += h;
+    });
+    if (current.length) pages.push(current);
+    return pages.length ? pages : [[]];
+};
+
+export const ResumePreview = React.forwardRef<HTMLDivElement, { data: ResumeData }>(({ data }, ref) => {
+    const blocks = useMemo(() => buildBlocks(data), [data]);
+    const measureRefs = useRef<(HTMLDivElement | null)[]>([]);
+    const [pages, setPages] = useState<number[][]>(() => [blocks.map((_, i) => i)]);
+
+    useLayoutEffect(() => {
+        const heights = blocks.map((_, i) => measureRefs.current[i]?.offsetHeight || 0);
+        setPages(paginate(heights));
+    }, [blocks]);
+
+    // `display: flow-root` makes each wrapper contain its children's margins so
+    // offsetHeight reflects the block's true rendered height (margins included).
+    const blockWrapper: React.CSSProperties = { display: 'flow-root' };
+
+    return (
+        <div ref={ref} className="flex flex-col items-center gap-8">
+            {/* Off-screen measuring pass at the exact A4 content width (170mm). */}
             <div
-                className="text-[10.5pt]"
-                style={{ wordSpacing: 'normal', letterSpacing: 'normal' }}
+                aria-hidden
+                className="tracking-tighter"
+                style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '170mm',
+                    visibility: 'hidden',
+                    pointerEvents: 'none',
+                    zIndex: -1,
+                    ...sheetBaseStyle,
+                }}
             >
-                {(data.links || []).map((link, idx) => (
-                    <React.Fragment key={link.id}>
-                        <a
-                            href={
-                                normalizeUrl(link.url)
-                            }
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{
-                                wordSpacing: 'normal',
-                                letterSpacing: 'normal',
-                                textAlign: 'left',
-                            }}
-                            className="text-blue-600 no-underline hover:underline italic"
-                        >
-                            {link.label || link.url?.replace(/^https?:\/\//, '')}
-                        </a>
-                        {idx < data.links.length - 1 && (
-                            <span className="mx-2">|</span>
-                        )}
-                    </React.Fragment>
+                {blocks.map((b, i) => (
+                    <div key={b.key} ref={(el) => (measureRefs.current[i] = el)} style={blockWrapper}>
+                        {b.node}
+                    </div>
                 ))}
             </div>
-        </header>
 
-        <div className="space-y-4 flex-1">
-            {data.sections.map((section) => {
-                if (!section.isVisible) return null;
-
-                switch (section.id) {
-                    case 'summary':
-                        return data.summary ? (
-                            <ResumeSection key={section.id} title={section.title}>
-                                <p className="text-[11pt] leading-snug text-black">
-                                    {data.summary}
-                                </p>
-                            </ResumeSection>
-                        ) : null;
-
-
-                    case 'experiences':
-                        return (data.experiences || []).length > 0 ? (
-                            <ResumeSection key={section.id} title={section.title}>
-                                {data.experiences.map((exp) => (
-                                    <div key={exp.id} className="mb-5 last:mb-0 break-inside-avoid">
-                                        <div className="flex justify-between items-baseline font-bold text-[11pt]">
-                                            <span>{exp.company}</span>
-                                            <span className="shrink-0 ml-4">{exp.year}</span>
-                                        </div>
-                                        <div className="flex justify-between items-baseline italic text-[11pt] mb-1">
-                                            <span>{exp.position}</span>
-                                            <span className="shrink-0 ml-4">{exp.location}</span>
-                                        </div>
-                                        <ul className="mt-1.5 space-y-1 list-disc pl-5 text-[11pt]">
-                                            {(exp.highlights || []).filter(h => h.trim()).map((h, j) => (
-                                                <li key={j} className="text-black leading-snug">{h}</li>
-                                            ))}
-                                        </ul>
-                                    </div>
-                                ))}
-                            </ResumeSection>
-                        ) : null;
-
-                    case 'technicalSkills':
-                        return (data.technicalSkills || []).length > 0 ? (
-                            <ResumeSection key={section.id} title={section.title}>
-                                <div className="space-y-1.5">
-                                    {data.technicalSkills.map((s, i) => (
-                                        <div key={i} className="text-[11pt] flex gap-2 items-start leading-snug">
-                                            <span className="font-bold text-black min-w-[125pt] text-left">{s.category}:</span>
-                                            <span className="text-black flex-1">{s.skills}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </ResumeSection>
-                        ) : null;
-
-                    case 'projects':
-                        return (data.projects || []).length > 0 ? (
-                            <ResumeSection key={section.id} title={section.title}>
-                                {data.projects.map((proj) => (
-                                    <div key={proj.id} className="last:mb-0 break-inside-avoid">
-                                        <div className="flex justify-between items-start items-baseline gap-4 mb-1">
-                                            <span className="font-bold text-[11pt] text-black uppercase">{proj.title}</span>
-                                            <span className="text-[10pt] italic shrink-0 text-right" style={{ wordSpacing: 'normal', letterSpacing: 'normal', textAlign: 'right' }}>
-                                                {proj.liveLink ? (
-                                                    <a
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        className="text-blue-600 hover:underline whitespace-nowrap mt-[-100px !important]"  
-                                                        href={proj.liveLink}
-                                                    >
-                                                        {proj.liveLinkLabel}
-                                                    </a>
-                                                ) : proj.subtitle}
-                                            </span>
-                                        </div>
-                                        {proj.techStack && <div className="text-[10pt] italic mb-1.5">({proj.techStack})</div>}
-                                        <ul className="mt-1.5 space-y-1 list-disc pl-5 text-[11pt]">
-                                            {(proj.highlights || []).filter(h_1 => h_1.trim()).map((h_2, j_1) => (
-                                                <li key={j_1} className="text-black leading-snug">{h_2}</li>
-                                            ))}
-                                        </ul>
-                                    </div>
-                                ))}
-                            </ResumeSection>
-                        ) : null;
-
-                    case 'freelance':
-                        return (data.freelance || []).length > 0 ? (
-                            <ResumeSection key={section.id} title={section.title}>
-                                {data.freelance.map((free) => (
-                                    <div key={free.id} className="mb-5 last:mb-0 break-inside-avoid">
-                                        <div className="flex justify-between items-baseline font-bold text-[11pt]">
-                                            <span>{free.project}</span>
-                                            <span className="shrink-0 ml-4">{free.duration}</span>
-                                        </div>
-                                        <div className="italic text-[11pt] mb-1">
-                                            <span>{free.role}</span>
-                                        </div>
-                                        <ul className="mt-1.5 space-y-1 list-disc pl-5 text-[11pt]">
-                                            {(free.highlights || []).filter(h => h.trim()).map((h, j) => (
-                                                <li key={j} className="text-black leading-snug">{h}</li>
-                                            ))}
-                                        </ul>
-                                    </div>
-                                ))}
-                            </ResumeSection>
-                        ) : null;
-
-                    case 'certifications':
-                        return (data.certifications || []).length > 0 ? (
-                            <ResumeSection key={section.id} title={section.title}>
-                                <div className="space-y-2">
-                                    {data.certifications.map((cert) => (
-                                        <div key={cert.id} className="flex justify-between items-baseline text-[11pt] break-inside-avoid">
-                                            <div className="flex-1">
-                                                <span className="font-bold text-black">{cert.name}</span>
-                                                <span className="mx-1 text-black">-</span>
-                                                <span className="text-black italic">{cert.issuer}</span>
-                                            </div>
-                                            <span className="font-bold text-black shrink-0 ml-4">{cert.year}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </ResumeSection>
-                        ) : null;
-
-
-
-                    case 'education':
-                        return (data.education || []).length > 0 ? (
-                            <ResumeSection key={section.id} title={section.title}>
-                                {data.education.map((edu) => (
-                                    <div key={edu.id} className="mb-4 last:mb-0 break-inside-avoid">
-                                        <div className="flex justify-between items-baseline font-bold text-[11pt]">
-                                            <span>{edu.school}</span>
-                                            <span className="shrink-0 ml-4">{edu.year}</span>
-                                        </div>
-                                        <div className="flex justify-between items-baseline italic text-[11pt]">
-                                            <span>{edu.degree} in {edu.major}</span>
-                                            <span className="shrink-0 ml-4">{edu.result}</span>
-                                        </div>
-                                    </div>
-                                ))}
-                            </ResumeSection>
-                        ) : null;
-
-                    case 'others':
-                        return (data.others || []).length > 0 ? (
-                            <ResumeSection key={section.id} title={section.title}>
-                                <div className="space-y-3">
-                                    {data.others.map((item) => (
-                                        <div key={item.id} className="break-inside-avoid">
-                                            <span className="font-bold text-[11pt] text-black mr-2">{item.title}:</span>
-                                            <span className="text-[11pt] text-black leading-snug">{item.description}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                            </ResumeSection>
-                        ) : null;
-
-                    default: return null;
-                }
-            })}
+            {/* Real A4 sheets. */}
+            {pages.map((pageIdxs, pi) => (
+                <div
+                    key={pi}
+                    className="bg-white shadow-2xl tracking-tighter"
+                    style={{
+                        width: '210mm',
+                        height: '297mm',
+                        padding: '18mm 20mm 15mm 20mm',
+                        boxSizing: 'border-box',
+                        overflow: 'hidden',
+                        ...sheetBaseStyle,
+                    }}
+                >
+                    {pageIdxs.map((i) => (
+                        <div key={blocks[i].key} style={blockWrapper}>
+                            {blocks[i].node}
+                        </div>
+                    ))}
+                </div>
+            ))}
         </div>
-    </div>
-));
+    );
+});
