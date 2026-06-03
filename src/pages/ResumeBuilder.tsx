@@ -158,11 +158,12 @@ export const ResumeBuilder = () => {
             const { PROMPTS, slimForAI } = await import('../services/prompts');
             const prompt = PROMPTS.OPTIMIZE_RESUME(jobDescription, slimForAI(data, projectPoolRef.current), getExperienceDuration());
 
-            // Keep ONE generation under ~1000 output tokens: thinkingBudget 0 (no separate
-            // reasoning tokens — the in-prompt INTERNAL ANALYSIS checklist still steers the
-            // single pass) and a 1536 output cap. With only 3-4 selected projects and the
-            // strict length limits, the resume JSON lands ~700-900 tokens.
-            const response = await aiService.generateWithFallback(prompt, RESUME_RESPONSE_SCHEMA, 1536, 0);
+            // thinkingBudget 0 keeps it a single pass (the in-prompt INTERNAL ANALYSIS
+            // checklist still steers it). 4096 output tokens comfortably fits the full
+            // resume JSON (summary + skills + experiences + 3-4 projects with highlights);
+            // newer thinking-Flash models eat into the budget, so the old 1536 cap truncated.
+            // The service still auto-retries with a larger cap if any model hits MAX_TOKENS.
+            const response = await aiService.generateWithFallback(prompt, RESUME_RESPONSE_SCHEMA, 4096, 0);
 
             if (response?.text) {
                 applyGeneratedResume(response.text);

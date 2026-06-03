@@ -93,36 +93,49 @@ export const aiService = {
     }
 
     const ai = new GoogleGenAI({ apiKey });
-    const config = buildConfig(schema, maxOutputTokens, thinkingBudget);
+    const baseCap = maxOutputTokens ?? (schema ? 16384 : 1024);
     let lastError: any;
 
     for (const model of GEMINI_MODELS) {
       try {
-        const result = await ai.models.generateContent({
-          model,
-          contents: prompt,
-          config,
-        });
+        // On a truncated (MAX_TOKENS) JSON response, retry the SAME model once with a
+        // larger output budget before falling through. Newer "thinking" Flash models
+        // (e.g. gemini-3.5-flash) can spend part of the budget on internal reasoning, so a
+        // tight cap that fit the older models leaves no room to finish the JSON. We escalate
+        // the cap rather than failing the whole flow.
+        const caps = schema ? [baseCap, Math.min(baseCap * 4, 16384)] : [baseCap];
+        let truncated = false;
 
-        // A MAX_TOKENS finish means the response was cut off mid-stream. For JSON (schema)
-        // calls that leaves the payload unparseable, so don't return it as success — record a
-        // clear error and fall through to the next model. (Without this, callers got a generic
-        // "unreadable response" with no hint that truncation was the cause.)
-        const finishReason = result?.candidates?.[0]?.finishReason;
-        if (result?.text && !(schema && finishReason === "MAX_TOKENS")) {
-          return {
-            text: result.text,
+        for (let attempt = 0; attempt < caps.length; attempt++) {
+          const config = buildConfig(schema, caps[attempt], thinkingBudget);
+          const result = await ai.models.generateContent({
             model,
-          };
+            contents: prompt,
+            config,
+          });
+
+          // A MAX_TOKENS finish means the response was cut off mid-stream. For JSON (schema)
+          // calls that leaves the payload unparseable, so don't return it as success.
+          const finishReason = result?.candidates?.[0]?.finishReason;
+          if (result?.text && !(schema && finishReason === "MAX_TOKENS")) {
+            return { text: result.text, model };
+          }
+
+          if (finishReason === "MAX_TOKENS") {
+            console.warn(`Model ${model} truncated (MAX_TOKENS) at ${caps[attempt]} output tokens.`);
+            truncated = true;
+            continue; // retry the same model with the next (larger) cap, if any remain
+          }
+
+          break; // empty/blocked response that isn't truncation — move to the next model
         }
 
-        if (finishReason === "MAX_TOKENS") {
-          console.warn(`Model ${model} returned a truncated (MAX_TOKENS) response.`);
+        if (truncated) {
           lastError = new Error(
             `Model ${model} hit the output token limit before completing the JSON (response truncated). Try a shorter Job Description or fewer projects.`
           );
-          continue;
         }
+        continue; // next model
       } catch (e: any) {
         console.warn(`Model ${model} failed:`, e?.message || e);
         lastError = e;
@@ -151,7 +164,7 @@ export const aiService = {
               const retryResult = await ai.models.generateContent({
                 model,
                 contents: prompt,
-                config,
+                config: buildConfig(schema, baseCap, thinkingBudget),
               });
 
               if (retryResult?.text) {
