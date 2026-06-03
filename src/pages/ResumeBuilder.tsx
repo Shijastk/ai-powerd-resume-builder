@@ -30,7 +30,10 @@ import { PUBLIC_DATA, PRIVATE_DATA } from '../data/initialData';
 const RESUME_RESPONSE_SCHEMA = {
     type: 'OBJECT',
     properties: {
-        fullName: { type: 'STRING', maxLength: 80 },
+        // NOTE: fullName is intentionally omitted — it's the candidate's identity, which the AI
+        // never receives (see slimForAI) and must not invent. Including it as `required` made the
+        // model fill it with the JD's job title (e.g. "Junior DevOps Engineer"). The frontend keeps
+        // the real name and never reads fullName from the AI payload.
         summary: { type: 'STRING', maxLength: 700 },
         technicalSkills: {
             type: 'ARRAY',
@@ -46,7 +49,7 @@ const RESUME_RESPONSE_SCHEMA = {
         projects: { type: 'ARRAY', items: { type: 'OBJECT', properties: { title: { type: 'STRING', maxLength: 100 }, subtitle: { type: 'STRING', maxLength: 120 }, techStack: { type: 'STRING', maxLength: 200 }, liveLink: { type: 'STRING', maxLength: 200 }, liveLinkLabel: { type: 'STRING', maxLength: 60 }, highlights: { type: 'ARRAY', items: { type: 'STRING', maxLength: 200 } } } } },
         freelance: { type: 'ARRAY', items: { type: 'OBJECT', properties: { project: { type: 'STRING', maxLength: 100 }, role: { type: 'STRING', maxLength: 80 }, duration: { type: 'STRING', maxLength: 40 }, highlights: { type: 'ARRAY', items: { type: 'STRING', maxLength: 200 } } } } }
     },
-    required: ["fullName", "summary", "technicalSkills", "experiences", "projects"]
+    required: ["summary", "technicalSkills", "experiences", "projects"]
 };
 
 export const ResumeBuilder = () => {
@@ -127,6 +130,10 @@ export const ResumeBuilder = () => {
     }, [data.experiences]);
 
     // Merge an AI-generated resume payload into state (re-using existing item ids where present).
+    // The model output is treated as UNTRUSTED: it sometimes leaks reasoning into field values
+    // ("Project (DevOps Focus Adaptation)(Note: ...)"), returns highlights as a string instead of
+    // an array, or omits highlights/techStack entirely. This normalizer cleans and back-fills the
+    // payload so a messy generation never corrupts the editor.
     const applyGeneratedResume = useCallback((text: string) => {
         // The API returns pure JSON (responseMimeType: "application/json").
         // Guard the parse so a malformed response shows a friendly toast, not a raw SyntaxError.
@@ -137,17 +144,129 @@ export const ResumeBuilder = () => {
             throw new Error("AI returned an unreadable response. Please try again.");
         }
 
-        const processArray = (arr: any[]) => arr?.map(item => ({ ...item, id: item.id || Math.random().toString(36).substr(2, 9) })) || [];
+        const newId = () => Math.random().toString(36).substr(2, 9);
 
-        setData(prev => ({
-            ...prev,
-            fullName: optimized.fullName || prev.fullName,
-            summary: optimized.summary || prev.summary,
-            technicalSkills: optimized.technicalSkills || prev.technicalSkills,
-            experiences: processArray(optimized.experiences || prev.experiences),
-            projects: processArray(optimized.projects || prev.projects),
-            freelance: processArray(optimized.freelance || prev.freelance),
-        }));
+        // Truncate a short field at the first leaked meta-commentary marker, e.g.
+        // "Parceler (DevOps Focus Adaptation)(Note: ...)" -> "Parceler". Leaves legitimate
+        // parentheticals like "AWS (ECS, Fargate)" untouched (no commentary keyword inside).
+        const stripNotes = (s: any): string => {
+            if (typeof s !== 'string') return '';
+            const markers = [
+                /\(\s*note\s*:/i, /\bnote\s*:/i, /\(\s*disclaimer/i,
+                /\([^)]*\b(?:focus\s+)?adaptation\b/i, /\([^)]*candidate profile/i,
+                /\([^)]*profile data/i, /\([^)]*original (?:project|was)/i,
+                /\([^)]*being adapted/i,
+            ];
+            let cut = -1;
+            for (const re of markers) {
+                const m = s.match(re);
+                if (m && m.index !== undefined && (cut === -1 || m.index < cut)) cut = m.index;
+            }
+            const out = cut >= 0 ? s.slice(0, cut) : s;
+            return out.replace(/\s*[-–—(]\s*$/, '').trim();
+        };
+
+        // Normalize highlights into a clean array of non-empty strings (accepts array OR
+        // newline string OR missing). Returns [] when nothing usable is present.
+        const cleanHighlights = (h: any): string[] => {
+            const arr = Array.isArray(h) ? h : typeof h === 'string' ? h.split('\n') : [];
+            return arr
+                .map((x: any) => stripNotes(typeof x === 'string' ? x : String(x ?? '')))
+                .filter((x: string) => x.trim().length > 0);
+        };
+
+        // Skills can come back as {skills: "a, b"} or {skills: ["a","b"]}; flatten to a string.
+        const cleanSkills = (skills: any, prev: any[]): any[] => {
+            if (!Array.isArray(skills)) return prev;
+            const out = skills
+                .filter((s: any) => s && (s.category || s.skills))
+                .map((s: any) => ({
+                    category: stripNotes(s.category),
+                    skills: Array.isArray(s.skills) ? s.skills.join(', ') : stripNotes(s.skills),
+                }));
+            return out.length ? out : prev;
+        };
+
+        // Find the original project a (rewritten) generated title most likely came from, so we can
+        // back-fill techStack/highlights the model dropped. Projects are a re-ordered SUBSET, so we
+        // match by leading token rather than by index.
+        const norm = (t: any) => stripNotes(t).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+        const matchPrevProject = (genTitle: string, pool: any[]): any | undefined => {
+            const g = norm(genTitle);
+            if (!g) return undefined;
+            const gFirst = g.split(' ')[0];
+            return pool.find(p => {
+                const n = norm(p.title);
+                if (!n) return false;
+                return n.startsWith(gFirst) || g.startsWith(n.split(' ')[0]);
+            });
+        };
+
+        setData(prev => {
+            const pool = projectPoolRef.current?.length ? projectPoolRef.current : (prev.projects || []);
+
+            // Experiences keep their real order, so back-fill empty bullets by index.
+            const experiences = Array.isArray(optimized.experiences) && optimized.experiences.length
+                ? optimized.experiences.map((gen: any, i: number) => {
+                    const base = prev.experiences?.[i];
+                    const highlights = cleanHighlights(gen.highlights);
+                    return {
+                        ...base, ...gen,
+                        id: gen.id || base?.id || newId(),
+                        company: stripNotes(gen.company) || base?.company || '',
+                        position: stripNotes(gen.position) || base?.position || '',
+                        location: typeof gen.location === 'string' ? gen.location : base?.location || '',
+                        year: stripNotes(gen.year) || base?.year || '',
+                        highlights: highlights.length ? highlights : (base?.highlights || []),
+                    };
+                })
+                : prev.experiences;
+
+            const projects = Array.isArray(optimized.projects) && optimized.projects.length
+                ? optimized.projects.map((gen: any) => {
+                    const title = stripNotes(gen.title);
+                    const base = matchPrevProject(title, pool);
+                    const highlights = cleanHighlights(gen.highlights);
+                    return {
+                        ...base, ...gen,
+                        id: gen.id || base?.id || newId(),
+                        title: title || base?.title || '',
+                        techStack: stripNotes(gen.techStack) || base?.techStack || '',
+                        liveLink: gen.liveLink || base?.liveLink || '',
+                        liveLinkLabel: stripNotes(gen.liveLinkLabel) || base?.liveLinkLabel || '',
+                        highlights: highlights.length ? highlights : (base?.highlights || []),
+                    };
+                })
+                : prev.projects;
+
+            const freelance = Array.isArray(optimized.freelance) && optimized.freelance.length
+                ? optimized.freelance.map((gen: any, i: number) => {
+                    const base = prev.freelance?.[i];
+                    const highlights = cleanHighlights(gen.highlights);
+                    return {
+                        ...base, ...gen,
+                        id: gen.id || base?.id || newId(),
+                        project: stripNotes(gen.project) || base?.project || '',
+                        role: stripNotes(gen.role) || base?.role || '',
+                        duration: stripNotes(gen.duration) || base?.duration || '',
+                        highlights: highlights.length ? highlights : (base?.highlights || []),
+                    };
+                })
+                : prev.freelance;
+
+            return {
+                ...prev,
+                // fullName is the candidate's identity — the AI never sees it (not in slimForAI) and
+                // must NOT set it, so always keep the real name. (This is what was getting replaced
+                // by the JD job title.)
+                fullName: prev.fullName,
+                summary: stripNotes(optimized.summary) || prev.summary,
+                technicalSkills: cleanSkills(optimized.technicalSkills, prev.technicalSkills),
+                experiences,
+                projects,
+                freelance,
+            };
+        });
     }, [setData]);
 
     // AI Orchestration
