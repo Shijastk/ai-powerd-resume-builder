@@ -2,12 +2,13 @@ import React, { useRef, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
     Mail, Key, Zap, Code, Download,
-    Check, Send, Copy, X, PenTool, Eye
+    Check, Send, Copy, X, PenTool, Eye,
+    Trash2, ExternalLink
 } from 'lucide-react';
 
 import { useResumeBuilderState } from '../hooks/useResumeBuilderState';
 import { useDebounce } from '../hooks/useDebounce';
-import { aiService } from '../services/ai.service';
+import { aiService, apiKeyStore } from '../services/ai.service';
 import { exportService } from '../services/export.service';
 import { calculateATSScore as runLocalScorer, ScoringResult } from '../utils/atsScorer';
 
@@ -29,18 +30,21 @@ import { PUBLIC_DATA, PRIVATE_DATA } from '../data/initialData';
 const RESUME_RESPONSE_SCHEMA = {
     type: 'OBJECT',
     properties: {
-        fullName: { type: 'STRING' },
-        summary: { type: 'STRING' },
+        fullName: { type: 'STRING', maxLength: 80 },
+        summary: { type: 'STRING', maxLength: 700 },
         technicalSkills: {
             type: 'ARRAY',
             items: {
                 type: 'OBJECT',
-                properties: { category: { type: 'STRING' }, skills: { type: 'STRING' } }
+                properties: { category: { type: 'STRING', maxLength: 40 }, skills: { type: 'STRING', maxLength: 300 } }
             }
         },
-        experiences: { type: 'ARRAY', items: { type: 'OBJECT', properties: { company: { type: 'STRING' }, position: { type: 'STRING' }, location: { type: 'STRING' }, year: { type: 'STRING' }, highlights: { type: 'ARRAY', items: { type: 'STRING' } } } } },
-        projects: { type: 'ARRAY', items: { type: 'OBJECT', properties: { title: { type: 'STRING' }, subtitle: { type: 'STRING' }, techStack: { type: 'STRING' }, liveLink: { type: 'STRING' }, liveLinkLabel: { type: 'STRING' }, highlights: { type: 'ARRAY', items: { type: 'STRING' } } } } },
-        freelance: { type: 'ARRAY', items: { type: 'OBJECT', properties: { project: { type: 'STRING' }, role: { type: 'STRING' }, duration: { type: 'STRING' }, highlights: { type: 'ARRAY', items: { type: 'STRING' } } } } }
+        // maxLength on the short fields (esp. `year`) is a hard backstop: it stops the model
+        // from leaking chain-of-thought into a single field and blowing the whole output budget
+        // (a MAX_TOKENS truncation that left the JSON unparseable — the "unreadable response" bug).
+        experiences: { type: 'ARRAY', items: { type: 'OBJECT', properties: { company: { type: 'STRING', maxLength: 80 }, position: { type: 'STRING', maxLength: 80 }, location: { type: 'STRING', maxLength: 80 }, year: { type: 'STRING', maxLength: 40 }, highlights: { type: 'ARRAY', items: { type: 'STRING', maxLength: 220 } } } } },
+        projects: { type: 'ARRAY', items: { type: 'OBJECT', properties: { title: { type: 'STRING', maxLength: 100 }, subtitle: { type: 'STRING', maxLength: 120 }, techStack: { type: 'STRING', maxLength: 200 }, liveLink: { type: 'STRING', maxLength: 200 }, liveLinkLabel: { type: 'STRING', maxLength: 60 }, highlights: { type: 'ARRAY', items: { type: 'STRING', maxLength: 200 } } } } },
+        freelance: { type: 'ARRAY', items: { type: 'OBJECT', properties: { project: { type: 'STRING', maxLength: 100 }, role: { type: 'STRING', maxLength: 80 }, duration: { type: 'STRING', maxLength: 40 }, highlights: { type: 'ARRAY', items: { type: 'STRING', maxLength: 200 } } } } }
     },
     required: ["fullName", "summary", "technicalSkills", "experiences", "projects"]
 };
@@ -70,6 +74,9 @@ export const ResumeBuilder = () => {
     const [initialLoading, setInitialLoading] = React.useState(true);
     const [scale, setScale] = React.useState(1);
     const [showLoginModal, setShowLoginModal] = React.useState(false);
+    const [showApiKeyModal, setShowApiKeyModal] = React.useState(false);
+    const [apiKeyInput, setApiKeyInput] = React.useState("");
+    const [hasApiKey, setHasApiKey] = React.useState(apiKeyStore.isConfigured());
     const [showLatexModal, setShowLatexModal] = React.useState(false);
     const [latexCode, setLatexCode] = React.useState("");
     const [copied, setCopied] = React.useState(false);
@@ -280,6 +287,38 @@ export const ResumeBuilder = () => {
         }
     }, [jobDescription, data, setCoverLetter, setActiveTab, showToast, setLoading]);
 
+    // Open the API key modal, prefilled with any key the user already saved.
+    const openApiKeyModal = useCallback(() => {
+        setApiKeyInput(apiKeyStore.get() || "");
+        setShowApiKeyModal(true);
+    }, []);
+
+    // Persist the user's own Gemini key, then verify it actually works before closing.
+    const handleSaveApiKey = useCallback(async () => {
+        const trimmed = apiKeyInput.trim();
+        if (!trimmed) return showToast("Please paste your Gemini API key.", 'warning');
+
+        apiKeyStore.set(trimmed);
+        setHasApiKey(true);
+        setLoading(true);
+        try {
+            await aiService.checkAvailableModels();
+            setShowApiKeyModal(false);
+            showToast("✅ API key saved & verified! You can now generate.", 'success');
+        } catch (e: any) {
+            showToast(`Key saved, but the test call failed: ${e?.message || 'invalid key'}`, 'error');
+        } finally {
+            setLoading(false);
+        }
+    }, [apiKeyInput, showToast, setLoading]);
+
+    const handleClearApiKey = useCallback(() => {
+        apiKeyStore.clear();
+        setApiKeyInput("");
+        setHasApiKey(apiKeyStore.isConfigured());
+        showToast("API key removed from this browser.", 'info');
+    }, [showToast]);
+
     const downloadPDF = useCallback(async () => {
         setLoading(true);
         try {
@@ -379,8 +418,9 @@ export const ResumeBuilder = () => {
                 </div>
 
                 <div className="order-2 md:order-3 ml-auto md:ml-0 flex items-center gap-1 sm:gap-2">
-                    <button onClick={() => window.aistudio?.openSelectKey?.()} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-slate-100 rounded-lg transition-colors" title="Select API Key">
+                    <button onClick={openApiKeyModal} className="relative p-2 text-slate-400 hover:text-blue-600 hover:bg-slate-100 rounded-lg transition-colors" title={hasApiKey ? "API Key configured — click to change" : "Add your Gemini API Key"}>
                         <Key size={17} />
+                        <span className={`absolute top-1 right-1 w-2 h-2 rounded-full ${hasApiKey ? 'bg-emerald-500' : 'bg-amber-500'}`} />
                     </button>
                     <button onClick={async () => {
                         setLoading(true);
@@ -482,6 +522,74 @@ export const ResumeBuilder = () => {
                     </div>
                 )}
             </main>
+
+            {showApiKeyModal && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+                    <div className="bg-white p-7 rounded-2xl border border-slate-200 w-full max-w-md animate-in fade-in zoom-in-95 duration-200">
+                        <div className="flex justify-between items-center mb-5">
+                            <h3 className="text-sm font-semibold uppercase tracking-[0.14em] flex items-center gap-2.5 text-slate-900">
+                                <span className="grid place-items-center w-7 h-7 rounded-lg bg-blue-50 text-blue-600"><Key size={15} /></span>
+                                Gemini API Key
+                            </h3>
+                            <button onClick={() => setShowApiKeyModal(false)} className="p-2 border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors">
+                                <X size={15} className="text-slate-500" />
+                            </button>
+                        </div>
+
+                        <p className="text-[12px] leading-relaxed text-slate-500 mb-4">
+                            Add your own Google Gemini API key to generate resumes. It's stored only in this browser and sent directly to Google — never to our servers.
+                        </p>
+
+                        <a
+                            href="https://aistudio.google.com/app/apikey"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-blue-600 hover:text-blue-700 mb-4 uppercase tracking-[0.1em]"
+                        >
+                            <ExternalLink size={13} /> Get a free API key
+                        </a>
+
+                        <form
+                            onSubmit={(e) => { e.preventDefault(); handleSaveApiKey(); }}
+                            className="space-y-4"
+                        >
+                            <div>
+                                <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-[0.16em] block mb-1.5">Your API Key</label>
+                                <input
+                                    type="password"
+                                    autoFocus
+                                    value={apiKeyInput}
+                                    onChange={(e) => setApiKeyInput(e.target.value)}
+                                    className="w-full p-3 bg-white border border-slate-200 rounded-lg outline-none text-sm font-mono focus:border-blue-500 hover:border-slate-300 transition-colors"
+                                    placeholder="AIza..."
+                                />
+                            </div>
+
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="submit"
+                                    disabled={loading}
+                                    className="flex-1 py-3 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition-colors uppercase tracking-[0.14em] text-[11px] flex items-center justify-center gap-2 disabled:opacity-40"
+                                >
+                                    {loading ? <div className="animate-spin h-3 w-3 border-2 border-white/20 border-t-white rounded-full" /> : <Check size={15} />}
+                                    Save & Verify
+                                </button>
+                                {hasApiKey && (
+                                    <button
+                                        type="button"
+                                        onClick={handleClearApiKey}
+                                        disabled={loading}
+                                        className="py-3 px-4 bg-white border border-red-300 text-red-600 font-semibold rounded-lg hover:bg-red-50 transition-colors uppercase tracking-[0.14em] text-[11px] flex items-center gap-2 disabled:opacity-40"
+                                        title="Remove saved key"
+                                    >
+                                        <Trash2 size={15} />
+                                    </button>
+                                )}
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
 
             {showLatexModal && (
                 <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4">

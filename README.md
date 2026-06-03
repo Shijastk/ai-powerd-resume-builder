@@ -54,11 +54,13 @@ A modern, AI-enhanced resume building application built with React, TypeScript, 
     npm install
     ```
 
-3.  **Environment Setup:**
-    Create a `.env.local` file in the root directory and add your Gemini API key:
+3.  **API key (two options):**
+    - **In-app (recommended):** start the app and click the **key icon** in the top bar to paste your own Gemini API key. It's stored only in your browser and sent directly to Google. Get a free key at https://aistudio.google.com/app/apikey.
+    - **Build-time fallback (optional):** to ship a default key for everyone, create a `.env.local` file in the root and add:
     ```env
     VITE_GEMINI_API_KEY=your_api_key_here
     ```
+    A key entered in the UI always takes precedence over the build-time one.
 
 4.  **Run the development server:**
     ```bash

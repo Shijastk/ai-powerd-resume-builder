@@ -18,6 +18,52 @@ export interface AIServiceResponse {
   model: string;
 }
 
+// ---------------------------------------------------------------------------
+// API key resolution
+// Users can bring their own Gemini API key via the UI (stored in localStorage).
+// That always takes precedence; the build-time VITE_GEMINI_API_KEY is only a
+// fallback so a self-hosted/owner deploy still works without per-user setup.
+// ---------------------------------------------------------------------------
+const USER_API_KEY_STORAGE = "gemini_api_key";
+
+export const apiKeyStore = {
+  get(): string | null {
+    try {
+      return localStorage.getItem(USER_API_KEY_STORAGE);
+    } catch {
+      return null;
+    }
+  },
+  set(key: string): void {
+    try {
+      localStorage.setItem(USER_API_KEY_STORAGE, key.trim());
+    } catch {
+      /* storage unavailable (private mode) — ignore */
+    }
+  },
+  clear(): void {
+    try {
+      localStorage.removeItem(USER_API_KEY_STORAGE);
+    } catch {
+      /* ignore */
+    }
+  },
+  // True when *some* key is available (user-provided or env fallback).
+  isConfigured(): boolean {
+    return !!resolveApiKey();
+  },
+};
+
+// User key first, then env fallback. Returns "" when nothing is configured.
+function resolveApiKey(): string {
+  const userKey = apiKeyStore.get();
+  if (userKey && userKey.trim()) return userKey.trim();
+  return (import.meta.env.VITE_GEMINI_API_KEY as string | undefined) || "";
+}
+
+const MISSING_KEY_MESSAGE =
+  "No Gemini API key found. Click the key icon in the top bar to add your own key.";
+
 // Build the per-call generation config.
 // - thinkingBudget: 0 disables hidden reasoning (cheap/fast) — fine for short text and
 //   the ATS analysis (which already reasons out loud in its markdown). Resume OPTIMIZE
@@ -41,9 +87,9 @@ const buildConfig = (schema?: any, maxOutputTokens?: number, thinkingBudget: num
 
 export const aiService = {
   async generateWithFallback(prompt: string, schema?: any, maxOutputTokens?: number, thinkingBudget?: number): Promise<AIServiceResponse> {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    const apiKey = resolveApiKey();
     if (!apiKey) {
-      throw new Error("API Key is missing! Please check your .env file.");
+      throw new Error(MISSING_KEY_MESSAGE);
     }
 
     const ai = new GoogleGenAI({ apiKey });
@@ -58,11 +104,24 @@ export const aiService = {
           config,
         });
 
-        if (result?.text) {
+        // A MAX_TOKENS finish means the response was cut off mid-stream. For JSON (schema)
+        // calls that leaves the payload unparseable, so don't return it as success — record a
+        // clear error and fall through to the next model. (Without this, callers got a generic
+        // "unreadable response" with no hint that truncation was the cause.)
+        const finishReason = result?.candidates?.[0]?.finishReason;
+        if (result?.text && !(schema && finishReason === "MAX_TOKENS")) {
           return {
             text: result.text,
             model,
           };
+        }
+
+        if (finishReason === "MAX_TOKENS") {
+          console.warn(`Model ${model} returned a truncated (MAX_TOKENS) response.`);
+          lastError = new Error(
+            `Model ${model} hit the output token limit before completing the JSON (response truncated). Try a shorter Job Description or fewer projects.`
+          );
+          continue;
         }
       } catch (e: any) {
         console.warn(`Model ${model} failed:`, e?.message || e);
@@ -115,8 +174,8 @@ export const aiService = {
   },
 
   async checkAvailableModels(): Promise<string[]> {
-    const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-    if (!apiKey) throw new Error("API Key missing!");
+    const apiKey = resolveApiKey();
+    if (!apiKey) throw new Error(MISSING_KEY_MESSAGE);
 
     const response = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`

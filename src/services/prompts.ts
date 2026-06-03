@@ -44,6 +44,12 @@ E. RED-FLAG SWEEP: Pre-empt every rejection trigger listed in "RED FLAGS TO ELIM
 F. 5-SECOND SCAN: Front-load the strongest, most JD-aligned content (title match in summary line 1, top JD skills first, strongest project first).
 This framework is stack-agnostic: apply it identically whether the JD is frontend, backend, full-stack, mobile, data, DevOps, or non-engineering.
 
+OUTPUT DISCIPLINE (CRITICAL — breaking this corrupts the JSON and fails the app):
+- Emit ONLY the final resume data as JSON. NEVER write reasoning, deliberation, assumptions, caveats, "Note:", "(adjusted...)", or any meta-commentary INSIDE a field value. Do ALL thinking silently BEFORE the first JSON character.
+- The "year" field holds ONLY the verbatim date range (e.g. "Jun 2023 - Aug 2025" or "Jan 2026 - Present") — nothing else. No notes, no explanations, no parenthetical commentary.
+- "${experienceDuration}" is the candidate's authoritative total experience (already derived from their earliest start date). State it as-is in the summary; do NOT recompute it, question it, or comment on any perceived mismatch with the dates or the JD's required years. There is no contradiction to resolve — just write the resume.
+- Every string value must be clean, final, recruiter-ready content of normal length. If you feel the urge to explain a decision, discard that text — it does not belong in the output.
+
 PROJECT SELECTION (most important rule — controls length & relevance):
 - The candidate's project pool below may contain many projects. SELECT ONLY THE 3-4 MOST RELEVANT to THIS JD (best tech-stack / domain / responsibility overlap).
 - Return ONLY those 3-4 selected projects in the "projects" array. OMIT every other project entirely — do NOT include all of them.
@@ -123,6 +129,11 @@ RED FLAGS TO ELIMINATE (do not reintroduce them):
 - No keyword stuffing: each project's \`techStack\` lists only the 4-6 technologies it truly used; do NOT pair jQuery with React/Next.js unless the JD requires it.
 - Today is ${todayLabel()}. Keep real dates exactly as given — never present a past role as future-dated; do not overstate years/seniority.
 - Make projects specific (real challenge → solution → measurable outcome), not generic AI-filler. Drop Freelance if it merely repeats other sections.
+
+OUTPUT DISCIPLINE (CRITICAL — breaking this corrupts the JSON and fails the app):
+- Emit ONLY the final resume data as JSON. NEVER write reasoning, deliberation, assumptions, caveats, "Note:", or meta-commentary INSIDE a field value. Do ALL thinking silently BEFORE the first JSON character.
+- The "year" field holds ONLY the verbatim date range — nothing else. No notes or parenthetical commentary.
+- "${experienceDuration}" is the candidate's authoritative total experience. State it as-is; do NOT recompute or comment on any perceived mismatch with the dates or the JD. There is no contradiction to resolve.
 
 NON-NEGOTIABLE RULES:
 1. Implement the review's highest-value recommendations: add the most important missing keywords and engineering/architecture/scale/performance/business-impact terminology it listed — prioritized to fit the length limits above.
