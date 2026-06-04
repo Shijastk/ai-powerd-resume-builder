@@ -80,10 +80,39 @@ const buildConfig = (schema?: any, maxOutputTokens?: number, thinkingBudget: num
   maxOutputTokens: maxOutputTokens ?? (schema ? 16384 : 1024),
   temperature: 0.4,
   thinkingConfig: { thinkingBudget },
+  // Anti-repetition guard for the JSON (schema) generations. The lite Flash models sometimes
+  // degenerate into a loop, repeating the same sentence into a single field (e.g. a project
+  // `title`) until they exhaust the output budget — the response truncates at MAX_TOKENS and the
+  // JSON is unparseable ("AI returned an unreadable response"). The schema's `maxLength` does NOT
+  // prevent this (Gemini treats it as advisory, not enforced during decoding). frequencyPenalty
+  // pushes the model away from tokens it has already emitted many times, which breaks the loop;
+  // presencePenalty nudges it to keep introducing new content. Free-text calls (the ATS markdown)
+  // don't need this and read better without it.
+  ...(schema ? { frequencyPenalty: 0.6, presencePenalty: 0.4 } : {}),
   ...(schema
     ? { responseMimeType: "application/json", responseSchema: schema }
     : {}),
 });
+
+// Detect the degenerate "repetition loop" failure: the model repeats the same phrase over and
+// over into one field until it hits MAX_TOKENS. Such a response only gets LONGER (never valid) if
+// we re-run the same model with a bigger cap, so we use this to skip the cap escalation and fall
+// through to the next model instead — saving a wasted second call and free-tier quota.
+// Heuristic: take an 80-char sample from ~40% into the (already long) output and count how many
+// non-overlapping times it recurs. 4+ recurrences = a loop.
+const isDegenerateRepetition = (text: string): boolean => {
+  if (!text || text.length < 800) return false;
+  const start = Math.floor(text.length * 0.4);
+  const sample = text.slice(start, start + 80);
+  if (sample.trim().length < 40) return false;
+  let count = 0;
+  let idx = 0;
+  while ((idx = text.indexOf(sample, idx)) !== -1) {
+    count++;
+    idx += sample.length;
+  }
+  return count >= 4;
+};
 
 export const aiService = {
   async generateWithFallback(prompt: string, schema?: any, maxOutputTokens?: number, thinkingBudget?: number): Promise<AIServiceResponse> {
@@ -122,8 +151,15 @@ export const aiService = {
           }
 
           if (finishReason === "MAX_TOKENS") {
-            console.warn(`Model ${model} truncated (MAX_TOKENS) at ${caps[attempt]} output tokens.`);
             truncated = true;
+            // If the truncation is a repetition loop, a bigger cap on the SAME model just produces a
+            // longer loop and truncates again — don't re-call it. Bail to the next model, which (with
+            // the frequency/presence penalties now in buildConfig) is far more likely to finish.
+            if (isDegenerateRepetition(result?.text || "")) {
+              console.warn(`Model ${model} fell into a repetition loop — skipping cap escalation, trying next model.`);
+              break;
+            }
+            console.warn(`Model ${model} truncated (MAX_TOKENS) at ${caps[attempt]} output tokens.`);
             continue; // retry the same model with the next (larger) cap, if any remain
           }
 
