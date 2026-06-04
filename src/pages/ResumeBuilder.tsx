@@ -52,6 +52,123 @@ const RESUME_RESPONSE_SCHEMA = {
     required: ["summary", "technicalSkills", "experiences", "projects"]
 };
 
+// ---------------------------------------------------------------------------
+// AI payload normalizers + validation gateway (pure, module-scope so both the
+// apply step and the pre-commit validator share the exact same cleaning logic).
+// ---------------------------------------------------------------------------
+
+// Truncate a short field at the first leaked meta-commentary marker, e.g.
+// "Parceler (DevOps Focus Adaptation)(Note: ...)" -> "Parceler". Leaves legitimate
+// parentheticals like "AWS (ECS, Fargate)" untouched (no commentary keyword inside).
+const stripNotes = (s: any): string => {
+    if (typeof s !== 'string') return '';
+    const markers = [
+        /\(\s*note\s*:/i, /\bnote\s*:/i, /\(\s*disclaimer/i,
+        /\([^)]*\b(?:focus\s+)?adaptation\b/i, /\([^)]*candidate profile/i,
+        /\([^)]*profile data/i, /\([^)]*original (?:project|was)/i,
+        /\([^)]*being adapted/i,
+    ];
+    let cut = -1;
+    for (const re of markers) {
+        const m = s.match(re);
+        if (m && m.index !== undefined && (cut === -1 || m.index < cut)) cut = m.index;
+    }
+    const out = cut >= 0 ? s.slice(0, cut) : s;
+    return out.replace(/\s*[-–—(]\s*$/, '').trim();
+};
+
+// Normalize highlights into a clean array of non-empty strings (accepts array OR
+// newline string OR missing). Returns [] when nothing usable is present.
+const cleanHighlights = (h: any): string[] => {
+    const arr = Array.isArray(h) ? h : typeof h === 'string' ? h.split('\n') : [];
+    return arr
+        .map((x: any) => stripNotes(typeof x === 'string' ? x : String(x ?? '')))
+        .filter((x: string) => x.trim().length > 0);
+};
+
+// Skills can come back as {skills: "a, b"} or {skills: ["a","b"]}; flatten to a string.
+const cleanSkills = (skills: any, prev: any[]): any[] => {
+    if (!Array.isArray(skills)) return prev;
+    const out = skills
+        .filter((s: any) => s && (s.category || s.skills))
+        .map((s: any) => ({
+            category: stripNotes(s.category),
+            skills: Array.isArray(s.skills) ? s.skills.join(', ') : stripNotes(s.skills),
+        }));
+    return out.length ? out : prev;
+};
+
+// Match a (rewritten) generated project title back to an original pool project so we can
+// back-fill dropped fields and restore the canonical name. Match by leading token because
+// the projects come back as a re-ordered SUBSET.
+const normTitle = (t: any) => stripNotes(t).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const matchPrevProject = (genTitle: string, pool: any[]): any | undefined => {
+    const g = normTitle(genTitle);
+    if (!g) return undefined;
+    const gFirst = g.split(' ')[0];
+    return pool.find(p => {
+        const n = normTitle(p.title);
+        if (!n) return false;
+        return n.startsWith(gFirst) || g.startsWith(n.split(' ')[0]);
+    });
+};
+
+// Parse the AI's JSON response. Throws a friendly error so a malformed/truncated payload
+// surfaces as a toast (and triggers the retry-with-mutation) rather than a raw SyntaxError.
+const parseAIResume = (text: string): any => {
+    try {
+        return JSON.parse((text || '').trim());
+    } catch {
+        throw new Error("AI returned an unreadable response.");
+    }
+};
+
+const wordCount = (s: any): number => stripNotes(s).split(/\s+/).filter(Boolean).length;
+
+// Validation gateway: inspect a parsed AI resume for the failure modes that corrupt the UI —
+// empty bullets, unpopulated arrays, headings that bleed into sentences, renamed/hallucinated
+// project names, and date fields stuffed with prose. Returns the concrete issues so the caller
+// can fire ONE silent corrective retry before the data ever reaches the editor. `pool` is the
+// original project pool (to confirm names stayed static).
+const validateAIResume = (parsed: any, pool: any[] = []): { ok: boolean; issues: string[] } => {
+    const issues: string[] = [];
+    if (!parsed || typeof parsed !== 'object') return { ok: false, issues: ["Response was not a JSON object."] };
+
+    if (!stripNotes(parsed.summary)) issues.push("The summary is empty.");
+
+    const skills = Array.isArray(parsed.technicalSkills) ? parsed.technicalSkills.filter((s: any) => s && (s.category || s.skills)) : [];
+    if (!skills.length) issues.push("The technicalSkills array is empty.");
+    for (const s of skills) {
+        if (wordCount(s.category) > 5) issues.push(`Skill category "${stripNotes(s.category)}" is longer than 5 words — it must be a 2-5 word label.`);
+    }
+
+    const experiences = Array.isArray(parsed.experiences) ? parsed.experiences : [];
+    if (!experiences.length) issues.push("The experiences array is empty.");
+    experiences.forEach((e: any, i: number) => {
+        const label = stripNotes(e?.position) || stripNotes(e?.company) || `#${i + 1}`;
+        if (!cleanHighlights(e?.highlights).length) issues.push(`Experience "${label}" has no highlights — every role needs at least one quantified bullet.`);
+        if (wordCount(e?.position) > 5) issues.push(`Experience position "${stripNotes(e?.position)}" is longer than 5 words.`);
+        if (wordCount(e?.company) > 5) issues.push(`Experience company "${stripNotes(e?.company)}" is longer than 5 words.`);
+        const year = stripNotes(e?.year);
+        if (year && (wordCount(year) > 5 || !/\d|present/i.test(year))) issues.push(`Experience "${label}" has an invalid "year" ("${year}") — it must contain only a date range.`);
+    });
+
+    const projects = Array.isArray(parsed.projects) ? parsed.projects : [];
+    if (!projects.length) issues.push("The projects array is empty.");
+    if (projects.length > 4) issues.push(`Returned ${projects.length} projects — select ONLY the 3-4 most relevant.`);
+    projects.forEach((p: any, i: number) => {
+        const title = stripNotes(p?.title);
+        const label = title || `#${i + 1}`;
+        if (!cleanHighlights(p?.highlights).length) issues.push(`Project "${label}" has no highlights.`);
+        if (wordCount(title) > 5) issues.push(`Project title "${title}" is longer than 5 words — a title is a name, not a sentence.`);
+        if (pool.length && title && !matchPrevProject(title, pool)) {
+            issues.push(`Project "${title}" does not match any real project name — keep project names exactly as provided.`);
+        }
+    });
+
+    return { ok: issues.length === 0, issues };
+};
+
 export const ResumeBuilder = () => {
     const {
         data, setData,
@@ -134,73 +251,8 @@ export const ResumeBuilder = () => {
     // ("Project (DevOps Focus Adaptation)(Note: ...)"), returns highlights as a string instead of
     // an array, or omits highlights/techStack entirely. This normalizer cleans and back-fills the
     // payload so a messy generation never corrupts the editor.
-    const applyGeneratedResume = useCallback((text: string) => {
-        // The API returns pure JSON (responseMimeType: "application/json").
-        // Guard the parse so a malformed response shows a friendly toast, not a raw SyntaxError.
-        let optimized: any;
-        try {
-            optimized = JSON.parse(text.trim());
-        } catch {
-            throw new Error("AI returned an unreadable response. Please try again.");
-        }
-
+    const applyGeneratedResume = useCallback((optimized: any) => {
         const newId = () => Math.random().toString(36).substr(2, 9);
-
-        // Truncate a short field at the first leaked meta-commentary marker, e.g.
-        // "Parceler (DevOps Focus Adaptation)(Note: ...)" -> "Parceler". Leaves legitimate
-        // parentheticals like "AWS (ECS, Fargate)" untouched (no commentary keyword inside).
-        const stripNotes = (s: any): string => {
-            if (typeof s !== 'string') return '';
-            const markers = [
-                /\(\s*note\s*:/i, /\bnote\s*:/i, /\(\s*disclaimer/i,
-                /\([^)]*\b(?:focus\s+)?adaptation\b/i, /\([^)]*candidate profile/i,
-                /\([^)]*profile data/i, /\([^)]*original (?:project|was)/i,
-                /\([^)]*being adapted/i,
-            ];
-            let cut = -1;
-            for (const re of markers) {
-                const m = s.match(re);
-                if (m && m.index !== undefined && (cut === -1 || m.index < cut)) cut = m.index;
-            }
-            const out = cut >= 0 ? s.slice(0, cut) : s;
-            return out.replace(/\s*[-–—(]\s*$/, '').trim();
-        };
-
-        // Normalize highlights into a clean array of non-empty strings (accepts array OR
-        // newline string OR missing). Returns [] when nothing usable is present.
-        const cleanHighlights = (h: any): string[] => {
-            const arr = Array.isArray(h) ? h : typeof h === 'string' ? h.split('\n') : [];
-            return arr
-                .map((x: any) => stripNotes(typeof x === 'string' ? x : String(x ?? '')))
-                .filter((x: string) => x.trim().length > 0);
-        };
-
-        // Skills can come back as {skills: "a, b"} or {skills: ["a","b"]}; flatten to a string.
-        const cleanSkills = (skills: any, prev: any[]): any[] => {
-            if (!Array.isArray(skills)) return prev;
-            const out = skills
-                .filter((s: any) => s && (s.category || s.skills))
-                .map((s: any) => ({
-                    category: stripNotes(s.category),
-                    skills: Array.isArray(s.skills) ? s.skills.join(', ') : stripNotes(s.skills),
-                }));
-            return out.length ? out : prev;
-        };
-
-        // Find the original project a (rewritten) generated title most likely came from, so we can
-        // back-fill techStack/highlights the model dropped. Projects are a re-ordered SUBSET, so we
-        // match by leading token rather than by index.
-        const norm = (t: any) => stripNotes(t).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-        const matchPrevProject = (genTitle: string, pool: any[]): any | undefined => {
-            const g = norm(genTitle);
-            if (!g) return undefined;
-            const gFirst = g.split(' ')[0];
-            return pool.find(p => {
-                const n = norm(p.title);
-                if (!n) return false;
-                return n.startsWith(gFirst) || g.startsWith(n.split(' ')[0]);
-            });
-        };
 
         setData(prev => {
             const pool = projectPoolRef.current?.length ? projectPoolRef.current : (prev.projects || []);
@@ -230,7 +282,10 @@ export const ResumeBuilder = () => {
                     return {
                         ...base, ...gen,
                         id: gen.id || base?.id || newId(),
-                        title: title || base?.title || '',
+                        // Project names are static facts: restore the original pool name whenever we
+                        // can match it, so the AI can never rename a project (it may only rewrite the
+                        // supporting content). Fall back to the generated title only for unmatched ones.
+                        title: base?.title || title || '',
                         techStack: stripNotes(gen.techStack) || base?.techStack || '',
                         liveLink: gen.liveLink || base?.liveLink || '',
                         liveLinkLabel: stripNotes(gen.liveLinkLabel) || base?.liveLinkLabel || '',
@@ -270,31 +325,66 @@ export const ResumeBuilder = () => {
     }, [setData]);
 
     // AI Orchestration
+    // Generate a resume, validate it, and on a 200-OK-but-invalid payload (empty bullets, renamed
+    // projects, headings bleeding into sentences, unreadable JSON) fire ONE silent corrective retry
+    // before the data ever reaches the editor — so the user no longer has to click "regenerate" by
+    // hand. `buildPrompt` returns the base OPTIMIZE / REGENERATE prompt. Returns the parsed resume
+    // plus a `clean` flag (false = retried but still imperfect, applied best-effort).
+    const generateValidatedResume = useCallback(async (buildPrompt: () => string): Promise<{ parsed: any; clean: boolean }> => {
+        const { PROMPTS } = await import('../services/prompts');
+        const pool = projectPoolRef.current?.length ? projectPoolRef.current : (data.projects || []);
+        const basePrompt = buildPrompt();
+
+        // thinkingBudget 0 = single pass (the in-prompt INTERNAL ANALYSIS still steers it); 4096
+        // output tokens fits the full resume JSON; the service auto-escalates the cap on MAX_TOKENS.
+        const runOnce = async (prompt: string) => {
+            const response = await aiService.generateWithFallback(prompt, RESUME_RESPONSE_SCHEMA, 4096, 0);
+            const parsed = parseAIResume(response?.text || '');
+            return { parsed, ...validateAIResume(parsed, pool) };
+        };
+
+        // First pass. A thrown error (timeout / unreadable JSON / all-models-failed) is caught so the
+        // mutation retry still gets its chance.
+        let first: { parsed: any; ok: boolean; issues: string[] } | null = null;
+        let firstError: any;
+        try { first = await runOnce(basePrompt); } catch (e) { firstError = e; }
+        if (first?.ok) return { parsed: first.parsed, clean: true };
+
+        // Silent retry-with-mutation: feed the exact validation issues (or a generic reminder for a
+        // network/parse failure) back into the prompt and try once more.
+        const issues = first?.issues?.length
+            ? first.issues
+            : ["The previous response was unreadable or incomplete — return one complete, valid resume JSON object."];
+        try {
+            const second = await runOnce(PROMPTS.CORRECTION_OVERRIDE(basePrompt, issues));
+            if (second.ok) return { parsed: second.parsed, clean: true };
+            return { parsed: second.parsed ?? first?.parsed, clean: false };
+        } catch (e) {
+            if (first?.parsed) return { parsed: first.parsed, clean: false };
+            throw firstError || e;
+        }
+    }, [data]);
+
     const handleOptimizeATS = useCallback(async () => {
         if (!jobDescription) return showToast("Please paste a Job Description!", 'warning');
         setLoading(true);
         try {
             const { PROMPTS, slimForAI } = await import('../services/prompts');
-            const prompt = PROMPTS.OPTIMIZE_RESUME(jobDescription, slimForAI(data, projectPoolRef.current), getExperienceDuration());
+            const { parsed, clean } = await generateValidatedResume(() =>
+                PROMPTS.OPTIMIZE_RESUME(jobDescription, slimForAI(data, projectPoolRef.current), getExperienceDuration()));
 
-            // thinkingBudget 0 keeps it a single pass (the in-prompt INTERNAL ANALYSIS
-            // checklist still steers it). 4096 output tokens comfortably fits the full
-            // resume JSON (summary + skills + experiences + 3-4 projects with highlights);
-            // newer thinking-Flash models eat into the budget, so the old 1536 cap truncated.
-            // The service still auto-retries with a larger cap if any model hits MAX_TOKENS.
-            const response = await aiService.generateWithFallback(prompt, RESUME_RESPONSE_SCHEMA, 4096, 0);
-
-            if (response?.text) {
-                applyGeneratedResume(response.text);
-                setActiveTab('preview');
-                showToast("✅ High-ATS Resume Generated!", 'success');
-            }
+            applyGeneratedResume(parsed);
+            setActiveTab('preview');
+            showToast(
+                clean ? "✅ High-ATS Resume Generated!" : "✅ Resume generated — a few fields were auto-corrected, please review.",
+                clean ? 'success' : 'warning'
+            );
         } catch (e: any) {
             showToast(`Failed to optimize: ${e.message}`, 'error');
         } finally {
             setLoading(false);
         }
-    }, [jobDescription, data, getExperienceDuration, applyGeneratedResume, setActiveTab, showToast, setLoading]);
+    }, [jobDescription, data, getExperienceDuration, generateValidatedResume, applyGeneratedResume, setActiveTab, showToast, setLoading]);
 
     // Regenerate the resume by applying the AI recruiter review (all fixes + missing keywords).
     const handleApplyReviewFixes = useCallback(async () => {
@@ -305,21 +395,22 @@ export const ResumeBuilder = () => {
         setLoading(true);
         try {
             const { PROMPTS, slimForAI } = await import('../services/prompts');
-            const prompt = PROMPTS.REGENERATE_FROM_REVIEW(jobDescription, slimForAI(data, projectPoolRef.current), atsFeedback, getExperienceDuration());
+            const { parsed, clean } = await generateValidatedResume(() =>
+                PROMPTS.REGENERATE_FROM_REVIEW(jobDescription, slimForAI(data, projectPoolRef.current), atsFeedback, getExperienceDuration()));
 
-            const response = await aiService.generateWithFallback(prompt, RESUME_RESPONSE_SCHEMA, 4096);
-
-            if (response?.text) {
-                applyGeneratedResume(response.text);
-                setActiveTab('preview');
-                showToast("✅ Resume regenerated with all review fixes applied! Re-run Score to verify.", 'success');
-            }
+            applyGeneratedResume(parsed);
+            setActiveTab('preview');
+            showToast(
+                clean ? "✅ Resume regenerated with all review fixes applied! Re-run Score to verify."
+                      : "✅ Resume regenerated — a few fields were auto-corrected, please review. Re-run Score to verify.",
+                clean ? 'success' : 'warning'
+            );
         } catch (e: any) {
             showToast(`Failed to apply fixes: ${e.message}`, 'error');
         } finally {
             setLoading(false);
         }
-    }, [jobDescription, data, atsFeedback, getExperienceDuration, applyGeneratedResume, setActiveTab, showToast, setLoading]);
+    }, [jobDescription, data, atsFeedback, getExperienceDuration, generateValidatedResume, applyGeneratedResume, setActiveTab, showToast, setLoading]);
 
     const calculateATSScore = useCallback(async () => {
         if (!jobDescription) return showToast("Please paste a Job Description!", 'warning');

@@ -13,6 +13,14 @@ export const GEMINI_MODELS = [
   "gemini-3.5-flash"        // newest free Flash
 ];
 
+// Per-attempt hard timeout (ms). The primary model gets a tighter window so a slow/cold
+// call fails over to the higher-quota flash-lite tier FAST instead of hanging on the
+// browser's multi-minute fetch default. Fallback models get a longer window so they
+// actually have room to finish. Tune `primary` down (e.g. 4000) to favour throughput over
+// the primary model's prose quality — note a full resume JSON usually needs 6-15s on flash,
+// so a very tight cap will fall through to flash-lite on nearly every call.
+const MODEL_TIMEOUT_MS = { primary: 15000, fallback: 30000 };
+
 export interface AIServiceResponse {
   text: string;
   model: string;
@@ -80,15 +88,12 @@ const buildConfig = (schema?: any, maxOutputTokens?: number, thinkingBudget: num
   maxOutputTokens: maxOutputTokens ?? (schema ? 16384 : 1024),
   temperature: 0.4,
   thinkingConfig: { thinkingBudget },
-  // Anti-repetition guard for the JSON (schema) generations. The lite Flash models sometimes
-  // degenerate into a loop, repeating the same sentence into a single field (e.g. a project
-  // `title`) until they exhaust the output budget — the response truncates at MAX_TOKENS and the
-  // JSON is unparseable ("AI returned an unreadable response"). The schema's `maxLength` does NOT
-  // prevent this (Gemini treats it as advisory, not enforced during decoding). frequencyPenalty
-  // pushes the model away from tokens it has already emitted many times, which breaks the loop;
-  // presencePenalty nudges it to keep introducing new content. Free-text calls (the ATS markdown)
-  // don't need this and read better without it.
-  ...(schema ? { frequencyPenalty: 0.6, presencePenalty: 0.4 } : {}),
+  // NOTE: do NOT send frequencyPenalty/presencePenalty here. They are NOT enabled on the
+  // Gemini free-tier Flash models — `gemini-2.5-flash` rejects them with a hard 400
+  // ("Penalty is not enabled for models/gemini-2.5-flash", INVALID_ARGUMENT), which failed
+  // EVERY schema generation on the primary model and forced the fallback every time. The
+  // degenerate-repetition loop they were meant to fight is already handled downstream:
+  // `isDegenerateRepetition` detects it and bails to the next model instead of escalating.
   ...(schema
     ? { responseMimeType: "application/json", responseSchema: schema }
     : {}),
@@ -114,6 +119,38 @@ const isDegenerateRepetition = (text: string): boolean => {
   return count >= 4;
 };
 
+// Run a single generateContent call with a hard client-side timeout. An AbortController fires
+// after `timeoutMs`, cancelling the in-flight request (the SDK accepts `config.abortSignal`) so
+// we move to the next model instead of waiting on the browser's multi-minute fetch default.
+// On timeout the thrown error is tagged `isTimeout` so the caller can fall through instantly
+// without running the (slow) rate-limit wait path.
+async function generateWithTimeout(
+  ai: GoogleGenAI,
+  model: string,
+  prompt: string,
+  config: any,
+  timeoutMs: number
+) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await ai.models.generateContent({
+      model,
+      contents: prompt,
+      config: { ...config, abortSignal: controller.signal },
+    });
+  } catch (e: any) {
+    if (controller.signal.aborted || e?.name === "AbortError" || /abort/i.test(e?.message || "")) {
+      const err: any = new Error(`Model ${model} timed out after ${timeoutMs}ms.`);
+      err.isTimeout = true;
+      throw err;
+    }
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export const aiService = {
   async generateWithFallback(prompt: string, schema?: any, maxOutputTokens?: number, thinkingBudget?: number): Promise<AIServiceResponse> {
     const apiKey = resolveApiKey();
@@ -125,7 +162,10 @@ export const aiService = {
     const baseCap = maxOutputTokens ?? (schema ? 16384 : 1024);
     let lastError: any;
 
-    for (const model of GEMINI_MODELS) {
+    for (let mi = 0; mi < GEMINI_MODELS.length; mi++) {
+      const model = GEMINI_MODELS[mi];
+      // First model = quality tier on a tight timeout (fail over fast); later models get longer.
+      const timeoutMs = mi === 0 ? MODEL_TIMEOUT_MS.primary : MODEL_TIMEOUT_MS.fallback;
       try {
         // On a truncated (MAX_TOKENS) JSON response, retry the SAME model once with a
         // larger output budget before falling through. Newer "thinking" Flash models
@@ -137,11 +177,7 @@ export const aiService = {
 
         for (let attempt = 0; attempt < caps.length; attempt++) {
           const config = buildConfig(schema, caps[attempt], thinkingBudget);
-          const result = await ai.models.generateContent({
-            model,
-            contents: prompt,
-            config,
-          });
+          const result = await generateWithTimeout(ai, model, prompt, config, timeoutMs);
 
           // A MAX_TOKENS finish means the response was cut off mid-stream. For JSON (schema)
           // calls that leaves the payload unparseable, so don't return it as success.
@@ -176,6 +212,11 @@ export const aiService = {
         console.warn(`Model ${model} failed:`, e?.message || e);
         lastError = e;
 
+        // Timed out (slow/cold call) — don't wait, fall through to the next model immediately.
+        if (e?.isTimeout) {
+          continue;
+        }
+
         // skip invalid or unavailable models / permissions
         if (
           e?.message?.includes("PERMISSION_DENIED") ||
@@ -197,11 +238,9 @@ export const aiService = {
             await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000));
 
             try {
-              const retryResult = await ai.models.generateContent({
-                model,
-                contents: prompt,
-                config: buildConfig(schema, baseCap, thinkingBudget),
-              });
+              const retryResult = await generateWithTimeout(
+                ai, model, prompt, buildConfig(schema, baseCap, thinkingBudget), timeoutMs
+              );
 
               if (retryResult?.text) {
                 return {

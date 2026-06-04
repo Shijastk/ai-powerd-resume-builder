@@ -16,6 +16,11 @@ const LINE_FACTOR = 1.3;
 const ptToMm = (pt: number) => pt * 0.3528;
 const lineHeight = (size: number) => ptToMm(size) * LINE_FACTOR;
 
+// Keep the PDF to at most this many pages by uniformly shrinking font sizes + vertical gaps.
+const MAX_PAGES = 2;
+const MIN_SCALE = 0.72; // don't shrink below this — readability floor (then it may exceed 2 pages)
+const USABLE_H = PAGE_H - MARGIN_T - MARGIN_B; // 264mm of content height per sheet
+
 // ---- Colours (RGB; jsPDF setTextColor is most reliable with numbers) ----
 const BLACK: [number, number, number] = [0, 0, 0];
 const BLUE: [number, number, number] = [37, 99, 235];
@@ -28,14 +33,22 @@ type Style = 'normal' | 'bold' | 'italic' | 'bolditalic';
  * data using jsPDF's text APIs. Every line is positioned by hand, so there are
  * no html2canvas letter/word-spacing artifacts.
  */
-const buildResumePdf = (data: ResumeData): jsPDF => {
+// Render the resume into a jsPDF doc. `scale` uniformly multiplies every font size and vertical
+// gap so the whole resume can be compressed to fit a page budget. In `measure` mode no page breaks
+// are inserted, so the returned `height` is the resume's true single-column content height (used to
+// derive the scale before the real render).
+const buildResumePdf = (data: ResumeData, scale = 1, measure = false): { doc: jsPDF; height: number } => {
     const doc = new jsPDF({ orientation: 'p', unit: 'mm', format: 'a4' });
     let y = MARGIN_T;
 
+    const fs = (n: number) => n * scale;   // scaled font size (pt)
+    const gap = (mm: number) => mm * scale; // scaled vertical gap (mm)
+
     const setColor = (c: [number, number, number]) => doc.setTextColor(c[0], c[1], c[2]);
 
-    /** Break to a new page if `h` mm won't fit in the remaining content area. */
+    /** Break to a new page if `h` mm won't fit in the remaining content area (disabled while measuring). */
     const ensureSpace = (h: number) => {
+        if (measure) return;
         if (y + h > PAGE_H - MARGIN_B) {
             doc.addPage();
             y = MARGIN_T;
@@ -146,7 +159,7 @@ const buildResumePdf = (data: ResumeData): jsPDF => {
 
     /** Bulleted, wrapped highlight list. */
     const bullets = (items: string[] | undefined) => {
-        const size = 11;
+        const size = fs(11);
         const textX = MARGIN_L + 4;
         const maxW = CONTENT_W - 4;
         (items || [])
@@ -170,31 +183,31 @@ const buildResumePdf = (data: ResumeData): jsPDF => {
 
     /** Section heading + underline rule. Keeps the title from orphaning. */
     const sectionTitle = (title: string) => {
-        const size = 12;
-        ensureSpace(lineHeight(size) + 6);
-        y += 3; // gap above the section
+        const size = fs(12);
+        ensureSpace(lineHeight(size) + gap(6));
+        y += gap(3); // gap above the section
         const lh = lineHeight(size);
         y += lh;
         doc.setFont('times', 'bold');
         doc.setFontSize(size);
         setColor(BLACK);
         doc.text(title.toUpperCase(), MARGIN_L, y);
-        y += 1.5;
+        y += gap(1.5);
         doc.setLineWidth(0.2);
         doc.setDrawColor(0, 0, 0);
         doc.line(MARGIN_L, y, PAGE_W - MARGIN_R, y);
-        y += 2;
+        y += gap(2);
     };
 
     // ---------------- Header ----------------
-    drawCenter((data.fullName || '').toUpperCase(), 20, 'bold');
-    y += 1;
+    drawCenter((data.fullName || '').toUpperCase(), fs(20), 'bold');
+    y += gap(1);
 
     const contact: Segment[] = [];
     if (data.location) contact.push({ text: data.location });
     if (data.phone) contact.push({ text: data.phone });
     if (data.email) contact.push({ text: data.email, url: `mailto:${data.email}`, color: BLUE });
-    drawCenteredSegments(contact, 10.5);
+    drawCenteredSegments(contact, fs(10.5));
 
     const linkSegments: Segment[] = (data.links || [])
         .filter((l) => l.url)
@@ -204,9 +217,9 @@ const buildResumePdf = (data: ResumeData): jsPDF => {
             style: 'italic' as Style,
             color: BLUE,
         }));
-    drawCenteredSegments(linkSegments, 10.5);
+    drawCenteredSegments(linkSegments, fs(10.5));
 
-    y += 3;
+    y += gap(3);
 
     // ---------------- Sections (respect order + visibility) ----------------
     data.sections.forEach((section) => {
@@ -216,7 +229,7 @@ const buildResumePdf = (data: ResumeData): jsPDF => {
             case 'summary':
                 if (data.summary) {
                     sectionTitle(section.title);
-                    writeWrapped(data.summary, MARGIN_L, CONTENT_W, 11);
+                    writeWrapped(data.summary, MARGIN_L, CONTENT_W, fs(11));
                 }
                 break;
 
@@ -224,12 +237,12 @@ const buildResumePdf = (data: ResumeData): jsPDF => {
                 if (data.experiences?.length) {
                     sectionTitle(section.title);
                     data.experiences.forEach((exp) => {
-                        ensureSpace(lineHeight(11) * 2);
-                        leftRight(exp.company, exp.year, 11, { leftColor: RED });
+                        ensureSpace(lineHeight(fs(11)) * 2);
+                        leftRight(exp.company, exp.year, fs(11), { leftColor: BLACK });
                         if (exp.position || exp.location)
-                            leftRight(exp.position, exp.location, 11, { leftStyle: 'italic', rightStyle: 'italic' });
+                            leftRight(exp.position, exp.location, fs(11), { leftStyle: 'italic', rightStyle: 'italic' });
                         bullets(exp.highlights);
-                        y += 2;
+                        y += gap(2);
                     });
                 }
                 break;
@@ -239,7 +252,7 @@ const buildResumePdf = (data: ResumeData): jsPDF => {
                     sectionTitle(section.title);
                     const labelGap = 2;
                     data.technicalSkills.forEach((s) => {
-                        doc.setFontSize(11);
+                        doc.setFontSize(fs(11));
                         doc.setFont('times', 'bold');
                         const labelW = doc.getTextWidth(`${s.category}:`) + labelGap;
                         const textX = MARGIN_L + labelW;
@@ -247,7 +260,7 @@ const buildResumePdf = (data: ResumeData): jsPDF => {
                         doc.setFont('times', 'normal');
                         const lines: string[] = doc.splitTextToSize(s.skills || '', maxW);
                         (lines.length ? lines : ['']).forEach((line, i) => {
-                            const lh = lineHeight(11);
+                            const lh = lineHeight(fs(11));
                             ensureSpace(lh);
                             y += lh;
                             setColor(BLACK);
@@ -258,7 +271,7 @@ const buildResumePdf = (data: ResumeData): jsPDF => {
                             doc.setFont('times', 'normal');
                             doc.text(line, textX, y);
                         });
-                        y += 1;
+                        y += gap(1);
                     });
                 }
                 break;
@@ -267,18 +280,18 @@ const buildResumePdf = (data: ResumeData): jsPDF => {
                 if (data.projects?.length) {
                     sectionTitle(section.title);
                     data.projects.forEach((proj) => {
-                        ensureSpace(lineHeight(11) * 2);
+                        ensureSpace(lineHeight(fs(11)) * 2);
                         const rightLabel = proj.liveLink
                             ? getLinkDisplay(proj.liveLink, proj.liveLinkLabel)
                             : proj.subtitle || '';
-                        leftRight(proj.title.toUpperCase(), rightLabel, 11, {
+                        leftRight(proj.title.toUpperCase(), rightLabel, fs(11), {
                             leftStyle: 'bold',
                             rightStyle: 'italic',
                             rightUrl: proj.liveLink ? normalizeUrl(proj.liveLink) : undefined,
                         });
-                        if (proj.techStack) writeWrapped(`(${proj.techStack})`, MARGIN_L, CONTENT_W, 10, 'italic');
+                        if (proj.techStack) writeWrapped(`(${proj.techStack})`, MARGIN_L, CONTENT_W, fs(10), 'italic');
                         bullets(proj.highlights);
-                        y += 2;
+                        y += gap(2);
                     });
                 }
                 break;
@@ -287,11 +300,11 @@ const buildResumePdf = (data: ResumeData): jsPDF => {
                 if (data.freelance?.length) {
                     sectionTitle(section.title);
                     data.freelance.forEach((free) => {
-                        ensureSpace(lineHeight(11) * 2);
-                        leftRight(free.project, free.duration, 11);
-                        if (free.role) writeWrapped(free.role, MARGIN_L, CONTENT_W, 11, 'italic');
+                        ensureSpace(lineHeight(fs(11)) * 2);
+                        leftRight(free.project, free.duration, fs(11));
+                        if (free.role) writeWrapped(free.role, MARGIN_L, CONTENT_W, fs(11), 'italic');
                         bullets(free.highlights);
-                        y += 2;
+                        y += gap(2);
                     });
                 }
                 break;
@@ -300,10 +313,10 @@ const buildResumePdf = (data: ResumeData): jsPDF => {
                 if (data.certifications?.length) {
                     sectionTitle(section.title);
                     data.certifications.forEach((cert) => {
-                        const lh = lineHeight(11);
+                        const lh = lineHeight(fs(11));
                         ensureSpace(lh);
                         y += lh;
-                        doc.setFontSize(11);
+                        doc.setFontSize(fs(11));
                         setColor(BLACK);
                         let x = MARGIN_L;
                         doc.setFont('times', 'bold');
@@ -319,7 +332,7 @@ const buildResumePdf = (data: ResumeData): jsPDF => {
                             const yw = doc.getTextWidth(cert.year);
                             doc.text(cert.year, PAGE_W - MARGIN_R - yw, y);
                         }
-                        y += 1;
+                        y += gap(1);
                     });
                 }
                 break;
@@ -328,12 +341,12 @@ const buildResumePdf = (data: ResumeData): jsPDF => {
                 if (data.education?.length) {
                     sectionTitle(section.title);
                     data.education.forEach((edu) => {
-                        ensureSpace(lineHeight(11) * 2);
-                        leftRight(edu.school, edu.year, 11);
+                        ensureSpace(lineHeight(fs(11)) * 2);
+                        leftRight(edu.school, edu.year, fs(11));
                         const deg = [edu.degree, edu.major].filter(Boolean).join(' in ');
                         if (deg || edu.result)
-                            leftRight(deg, edu.result, 11, { leftStyle: 'italic', rightStyle: 'normal' });
-                        y += 2;
+                            leftRight(deg, edu.result, fs(11), { leftStyle: 'italic', rightStyle: 'normal' });
+                        y += gap(2);
                     });
                 }
                 break;
@@ -342,7 +355,7 @@ const buildResumePdf = (data: ResumeData): jsPDF => {
                 if (data.others?.length) {
                     sectionTitle(section.title);
                     data.others.forEach((item) => {
-                        const size = 11;
+                        const size = fs(11);
                         const label = `${item.title}: `;
                         doc.setFont('times', 'bold');
                         doc.setFontSize(size);
@@ -364,14 +377,23 @@ const buildResumePdf = (data: ResumeData): jsPDF => {
                                 doc.text(line, MARGIN_L, y);
                             }
                         });
-                        y += 2;
+                        y += gap(2);
                     });
                 }
                 break;
         }
     });
 
-    return doc;
+    return { doc, height: y - MARGIN_T };
+};
+
+// Derive the largest scale (≤1) that keeps the resume within MAX_PAGES, by measuring its natural
+// single-column height. Shrinking font size also wraps more text per line, so the real render is
+// always a little shorter than this estimate — i.e. it never overflows the budget.
+const fitScale = (data: ResumeData): number => {
+    const { height } = buildResumePdf(data, 1, true);
+    if (height <= MAX_PAGES * USABLE_H) return 1;
+    return Math.max(MIN_SCALE, (MAX_PAGES * USABLE_H) / height);
 };
 
 export const exportService = {
@@ -379,7 +401,7 @@ export const exportService = {
      * Generates and downloads a real text-based (ATS-readable) PDF of the resume.
      */
     async downloadPDF(data: ResumeData, fileName: string): Promise<void> {
-        const doc = buildResumePdf(data);
+        const { doc } = buildResumePdf(data, fitScale(data));
         doc.save(fileName);
     },
 

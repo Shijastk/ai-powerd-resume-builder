@@ -8,10 +8,14 @@ const MARGIN_T = 18;
 const MARGIN_B = 15;
 const PAGE_CONTENT_PX = (297 - MARGIN_T - MARGIN_B) * PX_PER_MM; // usable height per sheet
 
+// Keep the resume within this many pages by uniformly shrinking the content (font + spacing).
+const MAX_PAGES = 2;
+const MIN_SCALE = 0.72; // readability floor — below this we stop shrinking (may then exceed 2 pages)
+
 // Shared base look for the resume sheets (kept identical to the old single-page preview).
 const sheetBaseStyle: React.CSSProperties = {
     fontFamily: "'Computer Modern Serif', serif",
-    lineHeight: 1.45,
+    lineHeight: 1.38,
     color: '#000000',
     letterSpacing: 'normal',
     wordSpacing: 'normal',
@@ -23,12 +27,12 @@ type Block = { key: string; node: React.ReactNode };
 const SectionHeading: React.FC<{ title: string }> = ({ title }) => (
     <div>
         <h2 className="text-[12pt] font-bold text-black uppercase tracking-tighter font-serif mb-0.5">{title}</h2>
-        <div className="border-b-[0.5pt] border-black w-full mb-2"></div>
+        <div className="border-b-[0.5pt] border-black w-full mb-1.5"></div>
     </div>
 );
 
 const Bullets: React.FC<{ items?: string[] }> = ({ items }) => (
-    <ul className="mt-1.5 space-y-1 list-disc pl-5 text-[11pt]">
+    <ul className="mt-1 space-y-0.5 list-disc pl-5 text-[11pt]">
         {(items || [])
             .filter((h) => h.trim())
             .map((h, j) => (
@@ -40,8 +44,8 @@ const Bullets: React.FC<{ items?: string[] }> = ({ items }) => (
 );
 
 const Header: React.FC<{ data: ResumeData }> = ({ data }) => (
-    <header className="mb-6" style={{ textAlign: 'center' }}>
-        <h1 className="text-[28pt] font-bold uppercase mb-1 leading-none">{data.fullName}</h1>
+    <header className="mb-4" style={{ textAlign: 'center' }}>
+        <h1 className="text-[24pt] font-bold uppercase mb-1 leading-none">{data.fullName}</h1>
         <div className="text-[10.5pt] mb-1">
             <span>{data.location}</span>
             <span className="mx-2">|</span>
@@ -92,7 +96,7 @@ const buildBlocks = (data: ResumeData): Block[] => {
             case 'experiences':
                 (data.experiences || []).forEach((exp) =>
                     entries.push(
-                        <div className="mb-5">
+                        <div className="mb-3.5">
                             <div className="flex justify-between items-baseline font-bold text-[11pt]">
                                 <p className=" text-left tracking-tighter">{exp.company}</p>
                                 <span className="shrink-0 ml-4">{exp.year}</span>
@@ -121,7 +125,7 @@ const buildBlocks = (data: ResumeData): Block[] => {
             case 'projects':
                 (data.projects || []).forEach((proj) =>
                     entries.push(
-                        <div className="mb-4">
+                        <div className="mb-3">
                             <div className="flex justify-between items-baseline gap-4 mb-1">
                                 <span className="font-bold text-[11pt] text-black uppercase">{proj.title}</span>
                                 <span className="text-[10pt] italic shrink-0 text-right">
@@ -149,7 +153,7 @@ const buildBlocks = (data: ResumeData): Block[] => {
             case 'freelance':
                 (data.freelance || []).forEach((free) =>
                     entries.push(
-                        <div className="mb-5">
+                        <div className="mb-3.5">
                             <div className="flex justify-between items-baseline font-bold text-[11pt]">
                                 <span>{free.project}</span>
                                 <span className="shrink-0 ml-4">{free.duration}</span>
@@ -181,7 +185,7 @@ const buildBlocks = (data: ResumeData): Block[] => {
             case 'education':
                 (data.education || []).forEach((edu) =>
                     entries.push(
-                        <div className="mb-4">
+                        <div className="mb-3">
                             <div className="flex justify-between items-baseline font-bold text-[11pt]">
                                 <span>{edu.school}</span>
                                 <span className="shrink-0 ml-4">{edu.year}</span>
@@ -249,10 +253,19 @@ export const ResumePreview = React.forwardRef<HTMLDivElement, { data: ResumeData
     const blocks = useMemo(() => buildBlocks(data), [data]);
     const measureRefs = useRef<(HTMLDivElement | null)[]>([]);
     const [pages, setPages] = useState<number[][]>(() => [blocks.map((_, i) => i)]);
+    const [scale, setScale] = useState(1);
 
     useLayoutEffect(() => {
+        // Heights are measured at the natural (unscaled) 170mm content width.
         const heights = blocks.map((_, i) => measureRefs.current[i]?.offsetHeight || 0);
-        setPages(paginate(heights));
+        const total = heights.reduce((a, b) => a + b, 0);
+        const target = MAX_PAGES * PAGE_CONTENT_PX;
+        // Shrink only when the natural content overflows the page budget. Shrinking the font also
+        // wraps more text per line, so the rendered result is always a little shorter than this
+        // estimate — it never overflows MAX_PAGES.
+        const s = total > target ? Math.max(MIN_SCALE, target / total) : 1;
+        setScale(s);
+        setPages(paginate(heights.map((h) => h * s)));
     }, [blocks]);
 
     // `display: flow-root` makes each wrapper contain its children's margins so
@@ -297,11 +310,21 @@ export const ResumePreview = React.forwardRef<HTMLDivElement, { data: ResumeData
                         ...sheetBaseStyle,
                     }}
                 >
-                    {pageIdxs.map((i) => (
-                        <div key={blocks[i].key} style={blockWrapper}>
-                            {blocks[i].node}
-                        </div>
-                    ))}
+                    {/* Uniform shrink-to-fit: scale the content down and widen it by 1/scale so it
+                        still fills the 170mm column (font + spacing shrink, width is preserved). */}
+                    <div
+                        style={
+                            scale < 1
+                                ? { transform: `scale(${scale})`, transformOrigin: 'top left', width: `${100 / scale}%` }
+                                : undefined
+                        }
+                    >
+                        {pageIdxs.map((i) => (
+                            <div key={blocks[i].key} style={blockWrapper}>
+                                {blocks[i].node}
+                            </div>
+                        ))}
+                    </div>
                 </div>
             ))}
         </div>

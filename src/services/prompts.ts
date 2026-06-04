@@ -30,9 +30,18 @@ const todayLabel = (): string =>
 
 export const PROMPTS = {
     OPTIMIZE_RESUME: (jobDescription: string, resumeData: string, experienceDuration: string) => `
-You are an elite ATS Optimization & Resume Tailoring Expert. Rewrite this resume so it scores 95-100% against the target Job Description, reads as a near-perfect match to a recruiter, AND fits within ONE-AND-A-HALF PAGES so a recruiter can shortlist it in a 5-second scan.
+You are an elite ATS Optimization & Resume Tailoring Expert. Rewrite this resume so it scores a genuine 100% against the target Job Description on third-party ATS scanners (Jobscan, Resume Worded, etc.), reads as a near-perfect match to a recruiter, AND fits within ONE-AND-A-HALF PAGES so a recruiter can shortlist it in a 5-second scan.
 
-PRIMARY GOAL: A tight, high-impact 1.5-page resume that maximizes coverage of the HIGHEST-VALUE JD keywords. Coverage matters, but LENGTH DISCIPLINE wins first — never overflow 1.5 pages.
+PRIMARY GOAL (TWO CO-EQUAL HARD REQUIREMENTS — BOTH MUST BE MET):
+1. 100% JD KEYWORD COVERAGE — EVERY hard skill, tool, library, framework, language, platform, cloud, service, methodology, and named technical concept in the JD appears VERBATIM somewhere in the resume. Zero JD-named technologies may be dropped. This is non-negotiable and is the #1 reason resumes fail external ATS scanners.
+2. 1.5-PAGE LENGTH DISCIPLINE — never overflow 1.5 pages.
+These do NOT conflict: the Skills section is the keyword-coverage workhorse. It costs almost no page space and may expand as much as needed to hold every JD term. Length discipline applies to PROSE (summary, bullets), never to keyword coverage. If forced to choose, NEVER drop a JD keyword — move it into Skills instead.
+
+MANDATORY KEYWORD COVERAGE — ZERO-DROP RULE (the single most important instruction):
+- Before writing, extract the COMPLETE list of every technology, tool, library, framework, methodology, platform, and named concept in the JD (its EXACT spelling/casing — "Node.js" not "NodeJS", "TanStack Query" if named).
+- Then guarantee EVERY one of them appears in the output — preferentially in Skills, reinforced in summary/experience/projects where it reads naturally.
+- Commonly-dropped items you MUST NOT omit when the JD names them (this list exists because these are repeatedly missed): React Query / TanStack Query, API caching / data-fetching strategies, Error Boundaries, Observability & monitoring (Sentry, logging, tracing), Feature flags, Design systems / design tokens, Performance profiling tools (Lighthouse, React DevTools, Web Vitals), Auth flows (OAuth, JWT, SSO), CI/CD, testing libraries, state management, accessibility (a11y), i18n.
+- FINAL CHECK before emitting JSON: silently walk your extracted JD term list and confirm each one is literally present in the resume text. If any is missing, add it to the appropriate Skills category. Do not emit until coverage is 100%.
 
 INTERNAL ANALYSIS — DO THIS FULLY IN YOUR HEAD FIRST, THEN WRITE (this single pass must be good enough that NO second review/regeneration is ever needed, for ANY job description in ANY tech stack or industry):
 Silently run the complete recruiter + ATS + hiring-manager audit below and bake every conclusion into the output JSON. Do NOT output the analysis itself — output only the finished resume.
@@ -55,19 +64,19 @@ PROJECT SELECTION (most important rule — controls length & relevance):
 - Return ONLY those 3-4 selected projects in the "projects" array. OMIT every other project entirely — do NOT include all of them.
 - Order the selected projects strongest-first (most JD-relevant on top).
 
-LENGTH LIMITS (enforce strictly — this is what keeps it to 1.5 pages):
+LENGTH LIMITS (enforce strictly on PROSE — this is what keeps it to 1.5 pages):
 - Summary: EXACTLY 3 concise lines.
-- Skills: 5-6 short categories, each one line.
+- Skills: 6-9 short categories. Each category LABEL is 2-3 words, but its skills VALUE may be a long dense comma-separated list — pack it with JD terms. Skills is where 100% keyword coverage is achieved; expand it as needed so NO JD-named technology is missing. Adding skill keywords is FREE for page length — never cut a JD term to shorten Skills.
 - Experience: keep ALL real roles; MAX 3 highlights each; each highlight ONE line (≤ 22 words).
 - Projects: ONLY the 3-4 selected; MAX 2 highlights each; each ≤ 20 words.
 - Freelance: at most 1 entry, MAX 2 highlights.
 - No filler, no repeating the same keyword across multiple bullets, no two bullets that say the same thing.
-- TOTAL OUTPUT BUDGET: keep the ENTIRE resume body compact — under ~600 words across ALL sections combined. Prefer short, dense, high-signal bullets over long ones. This keeps the generated JSON small and cheap.
+- TOTAL OUTPUT BUDGET applies to PROSE ONLY (summary + all highlights): keep that under ~600 words. The Skills section is EXEMPT from this budget — let it grow to cover every JD keyword.
 
 CONTENT RULES:
-1. Pull the highest-value hard skills, tools, frameworks, languages, platforms, methodologies, and qualifications from the JD — required first, then preferred.
+1. Pull ALL hard skills, tools, frameworks, libraries, languages, platforms, methodologies, and qualifications from the JD — required AND preferred. Every single one must land in the resume (Skills at minimum). "Lower priority" is never a reason to drop a JD term; it's a reason to place it in Skills rather than a bullet.
 2. Integrate them naturally across Summary, Skills, Experience, and the selected Projects using the JD's EXACT terminology and job title verbatim where it reads naturally.
-3. REWRITE the selected projects' descriptions, highlights, and tech stacks to directly reflect the JD's technologies and responsibilities. Reframe freely — do not feel bound by the original wording.
+3. REWRITE the selected projects' subtitles, highlights, and tech stacks to directly reflect the JD's technologies and responsibilities. BUT keep each project's "title" (the project NAME) EXACTLY as provided — never rename, translate, append to, or annotate it. Reframe the supporting content freely; the name itself is fixed.
 4. UPDATE \`techStack\` and skill entries to include the JD's required stack (whatever language/framework/cloud/tooling the JD names — not restricted to any single ecosystem).
 5. Lead every highlight with a strong action verb (prefer verbs from the JD) and make it quantified and impact-oriented.
 6. Keep the candidate's real companies, roles, job titles, and timeline/dates intact — reframe the content beneath them, not the identities.
@@ -82,6 +91,8 @@ RED FLAGS TO ELIMINATE IN THIS GENERATION (these are exactly what gets resumes r
 
 LAYOUT RULE:
 - Skill Categories MUST be short (Max 2-3 words): "Frontend", "Backend", "Cloud", "Tools", "Testing", "DevOps".
+- HEADING FIELDS — every project "title", skill "category", experience "position" and "company" — MUST be 2-5 words. They are labels, NOT sentences: no descriptions, no metrics, no parentheticals, no notes inside a heading. All descriptive content belongs in highlights only.
+- STATIC NAMES: project titles, company names, and the candidate's identity are fixed facts — reproduce them verbatim, never rewrite them.
 
 SUMMARY FOCUS: 3 lines mentioning **${experienceDuration} years of experience**, the **JD's exact job title**, the **top skills from the JD**, and **1 strong quantified impact highlight**.
 
@@ -113,13 +124,18 @@ Respond with a concise set of bullet points (max 5) focusing on the most critica
     REGENERATE_FROM_REVIEW: (jobDescription: string, resumeData: string, reviewAnalysis: string, experienceDuration: string) => `
 You are an elite ATS Optimization & Resume Strategist. You already produced a brutally honest recruiter-grade review of this resume (provided below). Now REGENERATE the full resume so that it implements EVERY fix from that review and scores 95-100% ATS against the Job Description, becoming genuinely interview-call worthy.
 
-PRIMARY GOAL: Apply the review's fixes WITHIN a tight 1.5-page resume a recruiter can shortlist in a 5-second scan. Length discipline is non-negotiable — never overflow 1.5 pages.
+PRIMARY GOAL (TWO CO-EQUAL HARD REQUIREMENTS): (1) 100% JD KEYWORD COVERAGE — every hard skill, tool, library, framework, language, platform, methodology, and named concept in the JD appears VERBATIM in the resume, zero dropped; AND (2) apply the review's fixes WITHIN a tight 1.5-page resume. Length discipline applies to prose, never to keyword coverage — if forced to choose, move the keyword into Skills, never drop it.
+
+MANDATORY KEYWORD COVERAGE — ZERO-DROP RULE:
+- Extract the COMPLETE JD technology list (exact spelling/casing) and guarantee EVERY item appears (Skills at minimum), plus every missing keyword the review flagged.
+- Never omit these when the JD names them (repeatedly-missed items): React Query / TanStack Query, API caching / data-fetching strategies, Error Boundaries, Observability & monitoring (Sentry, logging, tracing), Feature flags, Design systems / design tokens, Performance profiling (Lighthouse, React DevTools, Web Vitals), Auth flows (OAuth, JWT, SSO), CI/CD, testing, state management, accessibility (a11y), i18n.
+- FINAL CHECK before emitting JSON: walk the JD term list and confirm each is literally present; add any missing term to Skills before output. Do not emit until coverage is 100%.
 
 PROJECT SELECTION (controls length & relevance):
 - From the candidate's project pool, SELECT ONLY THE 3-4 MOST JD-RELEVANT projects and return ONLY those in the "projects" array. OMIT all others. Order them strongest-first.
 
-LENGTH LIMITS (enforce strictly):
-- Summary: 3 concise lines. Skills: 5-6 short categories.
+LENGTH LIMITS (enforce strictly on PROSE):
+- Summary: 3 concise lines. Skills: 6-9 categories (label 2-3 words; the skills value may be a long dense JD-keyword list — Skills is exempt from any word budget and expands to cover every JD term).
 - Experience: keep all real roles, MAX 3 one-line highlights each (≤ 22 words).
 - Projects: ONLY the 3-4 selected, MAX 2 highlights each (≤ 20 words). Freelance: ≤ 1 entry, ≤ 2 highlights.
 - No filler, no repeated keywords across bullets, no duplicate-meaning bullets.
@@ -146,6 +162,8 @@ NON-NEGOTIABLE RULES:
 
 LAYOUT RULE:
 - Skill Categories MUST be short (max 2-3 words): e.g. "Frontend", "Backend", "Cloud", "Tools", "Testing", "DevOps".
+- HEADING FIELDS — every project "title", skill "category", experience "position" and "company" — MUST be 2-5 words. They are labels, NOT sentences: no descriptions, metrics, parentheticals, or notes inside a heading. Descriptive content belongs in highlights only.
+- STATIC NAMES: keep each project "title", every company name, and the candidate's identity EXACTLY as provided — never rename, translate, or annotate them. Rewrite only the supporting content beneath them.
 
 SUMMARY FOCUS: Powerful 3-4 line summary mentioning **${experienceDuration} years of experience**, the **JD's exact job title**, the **top skills from the JD**, and **1-2 strong quantified impact highlights**.
 
@@ -188,7 +206,8 @@ You MUST return ONLY valid JSON matching this exact shape (no markdown fences, n
 
 Rules for the numeric scores:
 - "totalScore" must equal breakdown.keywords + breakdown.sections + breakdown.relevance + breakdown.safety.
-- Be a harsh, realistic grader. Average frontend resumes should land 55-75. Only genuinely JD-aligned, quantified, production-grade resumes earn 85+. Reserve 90+ for elite, near-perfect matches.
+- Be a harsh, realistic grader on PROSE QUALITY (metrics, specificity, seniority credibility). Average frontend resumes should land 55-75; only genuinely quantified, production-grade resumes earn 85+.
+- BUT score keyword coverage strictly mechanically, not harshly: breakdown.keywords reflects the literal % of JD-named technologies/tools/skills present in the resume text. If EVERY JD-named keyword is present verbatim, award the full or near-full keyword score — do NOT withhold points for "realism" when coverage is genuinely complete. A resume that legitimately covers 100% of JD keywords AND is quantified and production-grade can and should reach 95-100.
 
 The "feedback" markdown string MUST cover, with concrete evidence quoted from the resume and JD:
 # 1. ATS Match Score — explain WHY (shortlisting probability %, recruiter attention, keyword alignment, technical depth, competitiveness level)
@@ -245,5 +264,23 @@ COVER LETTER SPECIFICATIONS:
 8. Target length: 250-350 words
 9. Include subject line that includes role and candidate name
 
-Return complete cover email with subject line.`
+Return complete cover email with subject line.`,
+
+    // Wrap an OPTIMIZE_RESUME / REGENERATE_FROM_REVIEW prompt with a strict correction header for the
+    // silent retry-with-mutation pass: the first generation came back 200-OK but failed local
+    // validation (empty bullets, headings bleeding into sentences, renamed projects, etc.). We feed
+    // the exact issues back so the model fixes them programmatically before the result reaches the UI.
+    CORRECTION_OVERRIDE: (originalPrompt: string, issues: string[]) => `
+CRITICAL CORRECTION — your previous response was returned but FAILED validation and was rejected before reaching the user. You MUST fix EXACTLY these problems and return ONLY valid JSON matching the resume schema:
+${issues.map((i) => `- ${i}`).join('\n')}
+
+NON-NEGOTIABLE on this retry:
+- Project names/titles and company names stay EXACTLY as provided — never rename, translate, or annotate them.
+- Heading fields (project title, skill category, experience position/company) are 2-5 words — labels, never sentences.
+- Every experience AND project highlight is a non-empty, quantified bullet (no empty/blank highlights, no empty arrays).
+- "year"/"duration" hold ONLY a date range (e.g. "Jun 2023 - Aug 2025" / "Jan 2026 - Present") — no other text.
+- Emit ONLY the final resume JSON — no notes, no commentary inside any field.
+
+--- ORIGINAL INSTRUCTIONS (still apply in full) ---
+${originalPrompt}`
 };
