@@ -47,7 +47,7 @@ INTERNAL ANALYSIS — DO THIS FULLY IN YOUR HEAD FIRST, THEN WRITE (this single 
 Silently run the complete recruiter + ATS + hiring-manager audit below and bake every conclusion into the output JSON. Do NOT output the analysis itself — output only the finished resume.
 A. JD DECODE: Extract and rank EVERY signal in the JD — exact job title; required hard skills, tools, frameworks, languages, platforms, clouds; preferred/nice-to-have skills; methodologies (Agile/Scrum/CI-CD/TDD); domain/industry terms; seniority level; and the soft skills it names. Note the JD's EXACT spellings/casing (e.g. "Node.js" not "NodeJS").
 B. COVERAGE MAP: For each high-priority JD requirement decide WHERE it will appear (title, summary, a skill category, an experience bullet, or a project) so that no required item is missing or only partially covered. Prioritize required > preferred when space is tight.
-C. PROJECT FIT: From the pool, score each project's overlap with the JD and pick the 3-4 strongest; discard the rest.
+C. PROJECT FIT: From the pool, score each project's overlap with the JD and pick the 3-4 strongest; discard the rest. TIE-BREAKER ONLY: when two projects are roughly equal in JD relevance, prefer the one with a genuine AI/ML integration (LLMs/GenAI, ML models, NLP, computer vision, recommendation/search, AI APIs, vector DBs, agents) — such projects carry extra weight in the current market. This tie-breaker NEVER overrides real JD relevance: a clearly more JD-relevant non-AI project always beats a less-relevant AI one, and you must NOT fabricate an AI angle a project does not actually have.
 D. DEPTH SIGNALS: Decide which production-grade signals the JD implies (architecture, scalability, performance, security, testing, CI/CD, state management, rendering/SEO, real-time, accessibility, data/scale) and surface only the relevant ones with evidence.
 E. RED-FLAG SWEEP: Pre-empt every rejection trigger listed in "RED FLAGS TO ELIMINATE" below (missing metrics, keyword stuffing, generic AI phrasing, inflated seniority, future dates, redundant sections) BEFORE writing — the output must already pass a brutal recruiter scan.
 F. 5-SECOND SCAN: Front-load the strongest, most JD-aligned content (title match in summary line 1, top JD skills first, strongest project first).
@@ -63,6 +63,7 @@ PROJECT SELECTION (most important rule — controls length & relevance):
 - The candidate's project pool below may contain many projects. SELECT ONLY THE 3-4 MOST RELEVANT to THIS JD (best tech-stack / domain / responsibility overlap).
 - Return ONLY those 3-4 selected projects in the "projects" array. OMIT every other project entirely — do NOT include all of them.
 - Order the selected projects strongest-first (most JD-relevant on top).
+- AI-INTEGRATION TIE-BREAKER: JD relevance is always the #1 ranking factor. Use AI/ML integration (LLMs/GenAI, ML, NLP, CV, AI APIs, vector search, agents) only to break ties — when two candidates are about equally JD-relevant, keep/rank-higher the AI-integrated one. Never drop a clearly more JD-relevant project just because another is AI-related, and never invent an AI capability a project does not genuinely have.
 
 LENGTH LIMITS (enforce strictly on PROSE — this is what keeps it to 1.5 pages):
 - Summary: EXACTLY 3 concise lines.
@@ -133,6 +134,7 @@ MANDATORY KEYWORD COVERAGE — ZERO-DROP RULE:
 
 PROJECT SELECTION (controls length & relevance):
 - From the candidate's project pool, SELECT ONLY THE 3-4 MOST JD-RELEVANT projects and return ONLY those in the "projects" array. OMIT all others. Order them strongest-first.
+- AI-INTEGRATION TIE-BREAKER: JD relevance stays the #1 ranking factor. Only when two projects are roughly equal in JD relevance, prefer the AI/ML-integrated one (LLMs/GenAI, ML, NLP, CV, AI APIs, vector search, agents) — it carries extra market weight. Never drop a more JD-relevant non-AI project for a less-relevant AI one, and never fabricate an AI angle a project lacks.
 
 LENGTH LIMITS (enforce strictly on PROSE):
 - Summary: 3 concise lines. Skills: 6-9 categories (label 2-3 words; the skills value may be a long dense JD-keyword list — Skills is exempt from any word budget and expands to cover every JD term).
