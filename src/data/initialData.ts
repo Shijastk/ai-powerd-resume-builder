@@ -9,7 +9,7 @@ export const PRIVATE_DATA: ResumeData = {
     links: [
         { id: '1', url: 'https://www.linkedin.com/in/shijas-tk/', label: 'LinkedIn' },
         { id: '2', url: 'https://github.com/Shijastk', label: 'GitHub' },
-        { id: '3', url: 'https://shijasresume2025.vercel.app/', label: 'Portfolio' }
+        { id: '3', url: 'https://www.shijastk.in/', label: 'Portfolio' }
     ],
 
     summary: "Results-driven Frontend Engineer with over 3 years of professional experience designing, developing, and optimizing scalable SaaS platforms, enterprise UI systems, and high-traffic applications. Expert across React, Next.js, and TypeScript, with a proven track record of architecting modular codebases using Feature-Sliced Design (FSD). Adept at scaling design systems with Tailwind CSS, Material UI (MUI), and Bootstrap, backed by full-stack MERN engineering and automated CI/CD pipelines across GitHub and GitLab.",
