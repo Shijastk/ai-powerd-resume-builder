@@ -102,14 +102,26 @@ const cleanSkills = (skills: any, prev: any[]): any[] => {
 // back-fill dropped fields and restore the canonical name. Match by leading token because
 // the projects come back as a re-ordered SUBSET.
 const normTitle = (t: any) => stripNotes(t).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-const matchPrevProject = (genTitle: string, pool: any[]): any | undefined => {
+// Match a generated project title back to the original pool entry it was rewritten from.
+// Uses EXACT word comparisons (full normalized title, then the brand first-word) — never
+// substring `startsWith`, which wrongly conflated e.g. "AI-Powered…" (first word "ai") with
+// "Ainvox" because "ainvox".startsWith("ai"). That collision gave two distinct projects the
+// same base id + title, so they rendered identically and edited in lockstep.
+// `used` (optional) holds pool ids already claimed this pass, enforcing a one-to-one match so a
+// single pool project can never back two generated ones.
+const matchPrevProject = (genTitle: string, pool: any[], used?: Set<string>): any | undefined => {
     const g = normTitle(genTitle);
     if (!g) return undefined;
     const gFirst = g.split(' ')[0];
+    const free = (p: any) => !used || !used.has(p.id);
+    // 1) Exact normalized-title match wins.
+    const exact = pool.find(p => free(p) && normTitle(p.title) === g);
+    if (exact) return exact;
+    // 2) Otherwise the AI kept the brand name but reworded the rest — match on an exact first word.
     return pool.find(p => {
+        if (!free(p)) return false;
         const n = normTitle(p.title);
-        if (!n) return false;
-        return n.startsWith(gFirst) || g.startsWith(n.split(' ')[0]);
+        return !!n && n.split(' ')[0] === gFirst;
     });
 };
 
@@ -274,10 +286,14 @@ export const ResumeBuilder = () => {
                 })
                 : prev.experiences;
 
+            // Track pool entries already claimed so two generated projects can't both bind to the
+            // same original (which previously duplicated its id + title across both).
+            const usedProjectIds = new Set<string>();
             const projects = Array.isArray(optimized.projects) && optimized.projects.length
                 ? optimized.projects.map((gen: any) => {
                     const title = stripNotes(gen.title);
-                    const base = matchPrevProject(title, pool);
+                    const base = matchPrevProject(title, pool, usedProjectIds);
+                    if (base?.id) usedProjectIds.add(base.id);
                     const highlights = cleanHighlights(gen.highlights);
                     return {
                         ...base, ...gen,
@@ -293,6 +309,14 @@ export const ResumeBuilder = () => {
                     };
                 })
                 : prev.projects;
+
+            // Final guard: duplicate ids (e.g. the AI echoing the same gen.id twice) make the editor
+            // update two cards in lockstep — force every project id unique.
+            const seenProjectIds = new Set<string>();
+            (projects || []).forEach((p: any) => {
+                if (!p.id || seenProjectIds.has(p.id)) p.id = newId();
+                seenProjectIds.add(p.id);
+            });
 
             const freelance = Array.isArray(optimized.freelance) && optimized.freelance.length
                 ? optimized.freelance.map((gen: any, i: number) => {

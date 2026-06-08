@@ -45,7 +45,7 @@ export const PRIVATE_DATA: ResumeData = {
 
     projects: [
         {
-            id: 'p1', title: "Ainvox", subtitle: "Enterprise Cloud Telephony SaaS Dashboard", techStack: "React.js, TypeScript, Material UI (MUI), Redux Toolkit, WebSockets", liveLink: "", liveLinkLabel: "Proprietary",
+            id: 'p1', title: "Ainvox", subtitle: "Enterprise Cloud Telephony SaaS Dashboard", techStack: "React.js, TypeScript, Material UI (MUI), Redux Toolkit, WebSockets", liveLink: "https://ainvox.com/", liveLinkLabel: "Live Site",
             highlights: [
                 "Engineered the platform UI completely using Material UI (MUI), building a custom nested theme engine that instantly adapts to high-density operational viewports.",
                 "Overrode default MUI components to map complex real-time active call state streams seamlessly via WebSockets without triggering erratic layout re-renders.",
