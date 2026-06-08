@@ -1,18 +1,21 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Lock, AtSign, Quote, Zap } from 'lucide-react';
+import { Lock, AtSign, Quote, Zap } from 'lucide-react'
 
 export const LoginPage = () => {
     const navigate = useNavigate();
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
+    const adminUser = import.meta.env.VITE_ADMIN_USER || 'shijas';
+    const adminPass = import.meta.env.VITE_ADMIN_PASS || 'admin123';
+    console.log(adminUser ,"admin sy", adminPass)
 
     const handleLogin = (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
 
-        if (username === 'shijas' && password === 'admin123') {
+        if (username === adminUser && password === adminPass) {
             localStorage.setItem('is_admin', 'true');
             // We force a navigation to builder, which will read the localStorage
             navigate('/builder');

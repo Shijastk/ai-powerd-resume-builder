@@ -61,7 +61,7 @@ export const PRIVATE_DATA: ResumeData = {
             ]
         },
         {
-            id: 'p3', title: "AI-Powered Resume Builder", subtitle: "Dynamic Content Parsing Utility Application", techStack: "Next.js, TypeScript, Tailwind CSS, AI API Integration", liveLink: "https://ai-powerd-resume-builder.vercel.app/", liveLinkLabel: "Live Demo",
+            id: 'p3', title: "LuxeCV", subtitle: "AI-Powered Resume Builder", techStack: "Next.js, TypeScript, Tailwind CSS, AI API Integration", liveLink: "https://luxecv.vercel.app/", liveLinkLabel: "Live Demo",
             highlights: [
                 "Developed dynamic UI templates managed entirely via Tailwind configuration variables, enabling live template rendering on runtime data updates.",
                 "Built client-side data parsers to sanitize user-typed parameters into structured JSON objects, converting them directly into ATS-optimized resume blocks."
