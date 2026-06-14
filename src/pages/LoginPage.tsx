@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Lock, AtSign, Quote, Zap } from 'lucide-react'
 
 export const LoginPage = () => {
@@ -27,8 +27,8 @@ export const LoginPage = () => {
     };
 
     return (
-        <div className="min-h-screen bg-slate-100 flex items-center justify-center p-4 sm:p-6 font-sans">
-            <div className="w-full max-w-5xl bg-white rounded-3xl shadow-2xl overflow-hidden grid grid-cols-1 lg:grid-cols-2 min-h-[600px]">
+        <div className="min-h-screen bg-slate-100 flex items-center justify-center font-sans">
+            <div className="w-full bg-white overflow-hidden grid grid-cols-1 lg:grid-cols-2 h-[100vh]">
 
                 {/* Left Panel - Form */}
                 <div className="p-8 sm:p-12 lg:p-16 flex flex-col">
@@ -37,7 +37,7 @@ export const LoginPage = () => {
                             <div className="bg-slate-900 p-1.5 rounded-lg">
                                 <Zap size={16} className="text-yellow-400 fill-yellow-400" />
                             </div>
-                            <span className="font-black text-slate-900 tracking-tight">LuxeCV</span>
+                            <Link className="font-black text-slate-900 tracking-tight" to={"/"}>LuxeCV</Link>
                         </div>
                         <p className="text-slate-400">
                             Need access?{' '}

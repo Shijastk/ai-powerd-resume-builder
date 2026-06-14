@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useCallback } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import {
     Mail, Key, Zap, Code, Download,
     Check, Send, Copy, X, PenTool, Eye,
@@ -635,8 +635,8 @@ export const ResumeBuilder = () => {
                 <div className="order-1 flex items-center gap-3 cursor-pointer select-none" onDoubleClick={() => setShowLoginModal(true)}>
                     <img src="/favicon.svg" alt="Logo" className="w-9 h-9" />
                     <div>
-                        <h1 className="text-sm font-bold tracking-[0.18em] uppercase text-slate-900">LuxeCV</h1>
-                        <p className="text-[9px] font-medium text-slate-400 uppercase tracking-[0.18em] whitespace-nowrap flex items-center gap-1.5">
+                        <Link className="text-sm font-bold tracking-[0.18em] uppercase text-slate-900" to={"/"}>LuxeCV</Link>
+                        <p className="text-[9px] font-medium text-slate-400 uppercase max-w-24 xs:max-w-[100%] truncate">
                             {localStorage.getItem('is_admin') === 'true' ? <><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> Premium Unlocked</> : 'Professional ATS Engine'}
                         </p>
                     </div>
